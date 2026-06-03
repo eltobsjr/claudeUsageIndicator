@@ -60,6 +60,25 @@ export default class ClaudeUsagePrefs extends ExtensionPreferences {
         });
         panelGroup.add(formatoRow);
 
+        // posição na barra
+        const posicoes = [
+            ['right',      _('Direita (padrão)')],
+            ['right-edge', _('Direita — 1° da borda direita')],
+            ['left',       _('Esquerda')],
+            ['left-edge',  _('Esquerda — 1° da borda esquerda')],
+        ];
+        const posicaoRow = new Adw.ComboRow({
+            title: _('Posição na barra'),
+            subtitle: _('Onde o indicador aparece na barra superior'),
+            model: Gtk.StringList.new(posicoes.map(p => p[1])),
+        });
+        const currentPosicao = settings.get_string('panel-position');
+        posicaoRow.selected = Math.max(0, posicoes.findIndex(p => p[0] === currentPosicao));
+        posicaoRow.connect('notify::selected', () => {
+            settings.set_string('panel-position', posicoes[posicaoRow.selected][0]);
+        });
+        panelGroup.add(posicaoRow);
+
         // mostrar ícone
         const iconRow = new Adw.SwitchRow({
             title: _('Mostrar ícone'),

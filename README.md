@@ -26,7 +26,7 @@ Escolha o formato que prefere nas preferências da extensão:
 
 <table>
 <tr>
-<td><b>Exibição</b> — tema, formato do label, ícone, intervalo</td>
+<td><b>Exibição</b> — tema, formato do label, posição na barra, ícone, intervalo</td>
 <td><b>Uso</b> — dados em tempo real via OAuth</td>
 <td><b>Sobre</b></td>
 </tr>
@@ -36,6 +36,21 @@ Escolha o formato que prefere nas preferências da extensão:
 <td><img src="docs/prefs-about.png" width="200"/></td>
 </tr>
 </table>
+
+---
+
+## Posição na barra
+
+Escolha onde o indicador aparece nas preferências da extensão:
+
+| Opção | Descrição |
+|---|---|
+| **Direita (padrão)** | Lado direito, próximo ao centro |
+| **Direita — 1° da borda direita** | Primeiro elemento entrando pela borda direita |
+| **Esquerda** | Lado esquerdo (após o botão Atividades) |
+| **Esquerda — 1° da borda esquerda** | Antes do botão Atividades, na extremidade esquerda |
+
+A posição é aplicada ao vivo ao mudar nas preferências — sem precisar reiniciar a extensão.
 
 ---
 
@@ -109,7 +124,7 @@ gnome-extensions prefs claude-usage@eltobsjr.gmail.com
 
 Ou pelo menu da extensão → **Preferências**.
 
-- **Exibição** — tema de cores, formato do label, mostrar/ocultar ícone,
+- **Exibição** — tema de cores, formato do label, posição na barra, mostrar/ocultar ícone,
   intervalo de atualização.
 - **Uso** — informativo: os dados de plano e % de uso vêm automaticamente das
   credenciais OAuth do Claude Code, sem configuração manual.

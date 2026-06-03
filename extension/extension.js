@@ -367,11 +367,45 @@ class ClaudeIndicator extends PanelMenu.Button {
 
 export default class ClaudeUsageExtension extends Extension {
     enable() {
-        this._indicator = new ClaudeIndicator(this);
-        Main.panel.addToStatusArea(this.uuid, this._indicator);
+        this._settings = this.getSettings();
+        this._posHandler = this._settings.connect('changed::panel-position',
+            () => this._reposition());
+        this._create();
     }
-    disable() {
+
+    _create() {
+        this._indicator = new ClaudeIndicator(this);
+        const pos = this._settings.get_string('panel-position');
+        switch (pos) {
+            case 'right-edge':
+                Main.panel.addToStatusArea(this.uuid, this._indicator, 0, 'right');
+                break;
+            case 'left':
+                Main.panel.addToStatusArea(this.uuid, this._indicator, -1, 'left');
+                break;
+            case 'left-edge':
+                Main.panel.addToStatusArea(this.uuid, this._indicator, 0, 'left');
+                break;
+            default: // 'right'
+                Main.panel.addToStatusArea(this.uuid, this._indicator);
+                break;
+        }
+    }
+
+    _reposition() {
+        delete Main.panel.statusArea[this.uuid];
         this._indicator?.destroy();
         this._indicator = null;
+        this._create();
+    }
+
+    disable() {
+        if (this._posHandler) {
+            this._settings.disconnect(this._posHandler);
+            this._posHandler = null;
+        }
+        this._indicator?.destroy();
+        this._indicator = null;
+        this._settings = null;
     }
 }
