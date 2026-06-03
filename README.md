@@ -116,3 +116,4 @@ claude-usage-indicator/
 ## 📄 Licença
 
 MIT — veja [LICENSE](LICENSE).
+# claudeUsageIndicator
