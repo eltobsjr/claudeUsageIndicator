@@ -214,6 +214,24 @@ class ClaudeIndicator extends PanelMenu.Button {
         this.menu.addMenuItem(this._modelBox);
         this.menu.addMenuItem(new PopupMenu.PopupSeparatorMenuItem());
 
+        // seletor de tema
+        this._temaMenu = new PopupMenu.PopupSubMenuMenuItem(_('Tema'));
+        const TEMAS_LISTA = [
+            ['auto',       _('Automático')],
+            ['sistema',    _('Sistema · Fedora Navy')],
+            ['catppuccin', _('Catppuccin Macchiato')],
+            ['verde',      _('Verde GNOME')],
+            ['laranja',    _('Laranja Ubuntu')],
+        ];
+        this._temaItems = {};
+        for (const [id, nome] of TEMAS_LISTA) {
+            const item = new PopupMenu.PopupMenuItem(nome);
+            item.connect('activate', () => this._settings.set_string('color-theme', id));
+            this._temaMenu.menu.addMenuItem(item);
+            this._temaItems[id] = item;
+        }
+        this.menu.addMenuItem(this._temaMenu);
+
         // ações
         const refresh = new PopupMenu.PopupImageMenuItem(_('Atualizar agora'), 'view-refresh-symbolic');
         refresh.connect('activate', () => this._tick(true));
@@ -232,6 +250,20 @@ class ClaudeIndicator extends PanelMenu.Button {
         const theme = this._settings.get_string('color-theme');
         const cls = theme !== 'auto' ? 'cu-tema-' + theme : null;
         [this._rowSession, this._rowToday, this._rowWeek].forEach(r => r.setTheme(cls));
+        this._updateTemaMenu(theme);
+    }
+
+    _updateTemaMenu(theme) {
+        const NOMES = {
+            'auto':       'Automático',
+            'sistema':    'Sistema',
+            'catppuccin': 'Catppuccin',
+            'verde':      'Verde',
+            'laranja':    'Laranja',
+        };
+        this._temaMenu.label.text = `Tema: ${NOMES[theme] || theme}`;
+        for (const [id, item] of Object.entries(this._temaItems))
+            item.setOrnament(id === theme ? PopupMenu.Ornament.CHECK : PopupMenu.Ornament.NONE);
     }
 
     _restartTimer() {
