@@ -11,7 +11,6 @@ import * as Main from 'resource:///org/gnome/shell/ui/main.js';
 
 const DATA_DIR  = GLib.build_filenamev([GLib.get_user_data_dir(), 'claude-usage']);
 const USAGE_FILE = GLib.build_filenamev([DATA_DIR, 'usage.json']);
-const CONFIG_FILE = GLib.build_filenamev([DATA_DIR, 'config.json']);
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -32,8 +31,8 @@ function fmtCountdown(isoStr) {
     const d = Math.floor(diff / 86400);
     const h = Math.floor((diff % 86400) / 3600);
     const m = Math.floor((diff % 3600) / 60);
-    if (d > 0) return `${d}d ${h}h`;
-    if (h > 0) return `${h}h ${m}m`;
+    if (d > 0) return `${d}d${h}h`;
+    if (h > 0) return `${h}h${m}m`;
     return `${m}m`;
 }
 
@@ -175,12 +174,11 @@ class ClaudeIndicator extends PanelMenu.Button {
             'changed::refresh-interval',    () => this._restartTimer(),
             'changed::show-icon',           () => this._applyShowIcon(),
             'changed::color-theme',         () => this._applyTheme(),
-            'changed::subscription-plan',   () => this._applyPlan(),
+            'changed::label-format',        () => { if (this._data) this._render(); },
             this);
         this._applyShowIcon();
         this._applyTheme();
         this._applyPlan();
-        this._syncConfig();
         this._tick();
         this._restartTimer();
     }
@@ -240,9 +238,7 @@ class ClaudeIndicator extends PanelMenu.Button {
     }
 
     _applyPlan() {
-        const NOMES = { api: 'API', pro: 'Pro', max5: 'Max 5×', max20: 'Max 20×' };
-        const plan = this._settings.get_string('subscription-plan');
-        this._planLabel.text = NOMES[plan] ?? plan;
+        // Plano vem do usage.json (lido da API do claude.ai); atualizado em _render()
     }
 
     _restartTimer() {
@@ -258,24 +254,7 @@ class ClaudeIndicator extends PanelMenu.Button {
         }
     }
 
-    _syncConfig() {
-        try {
-            const cfg = {
-                session_token_limit:  this._settings.get_int('session-token-limit'),
-                daily_token_limit:    this._settings.get_int('daily-token-limit'),
-                weekly_token_limit:   this._settings.get_int('weekly-token-limit'),
-                weekly_reset_weekday: this._settings.get_int('weekly-reset-weekday'),
-                weekly_reset_hour:    this._settings.get_int('weekly-reset-hour'),
-            };
-            GLib.mkdir_with_parents(DATA_DIR, 0o755);
-            Gio.File.new_for_path(CONFIG_FILE).replace_contents(
-                JSON.stringify(cfg), null, false,
-                Gio.FileCreateFlags.REPLACE_DESTINATION, null);
-        } catch (_e) {}
-    }
-
     _tick() {
-        this._syncConfig();
         const py = 'python3';
         const script = GLib.build_filenamev([this._ext.path, 'claude-usage-tracker.py']);
         try {
@@ -304,7 +283,10 @@ class ClaudeIndicator extends PanelMenu.Button {
         const week    = d.week    || {};
         const now     = Date.now();
 
-        // timestamp no cabeçalho
+        // plano real (da API) e timestamp no cabeçalho
+        const PLAN_NOMES = { pro: 'Pro', max: 'Max', api: 'API', unknown: '?' };
+        const planKey = (d.plan || 'unknown').toLowerCase();
+        this._planLabel.text = PLAN_NOMES[planKey] ?? d.plan ?? '?';
         this._timeLabel.text = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
 
         // frações de tempo (usadas como fallback de % quando não há limite configurado)
@@ -320,11 +302,21 @@ class ClaudeIndicator extends PanelMenu.Button {
                 (new Date(week.reset_at) - new Date(week.start_at))))
             : null;
 
-        // --- painel: "S 47% 2h · H 65% 11h · W 80% 4d" ---
+        // --- painel ---
+        const fmt = this._settings.get_string('label-format');
+
+        function sparkBar(frac, len = 5) {
+            const filled = Math.round(Math.max(0, Math.min(1, frac ?? 0)) * len);
+            return '▓'.repeat(filled) + '░'.repeat(len - filled);
+        }
+
         function panelBit(prefix, b, reset, frac) {
             const pct = b.pct != null ? b.pct : (frac != null ? Math.round(frac * 100) : null);
+            const pctFrac = pct != null ? pct / 100 : (frac ?? 0);
             const val = pct != null ? `${Math.round(pct)}%` : humanTokens(b.tokens || 0);
-            const cd  = reset ? ` ${fmtCountdown(reset)}` : '';
+            if (fmt === 'spark')    return `${sparkBar(pctFrac)} ${val}`;
+            if (fmt === 'pct-only') return `${prefix} ${val}`;
+            const cd = reset ? ` ${fmtCountdown(reset)}` : '';
             return `${prefix} ${val}${cd}`;
         }
         this._panelLabel.text =

@@ -22,27 +22,6 @@ export default class ClaudeUsagePrefs extends ExtensionPreferences {
         });
         page.add(panelGroup);
 
-        // modo do painel
-        const modes = [
-            ['session-tokens', _('Sessão · tokens')],
-            ['session-pct', _('Sessão · porcentagem')],
-            ['week-pct', _('Semana · porcentagem')],
-            ['session-cost', _('Sessão · custo ($)')],
-            ['today-cost', _('Hoje · custo ($)')],
-            ['session-reset', _('Sessão · tempo até reset')],
-        ];
-        const modeRow = new Adw.ComboRow({
-            title: _('Conteúdo do painel'),
-            subtitle: _('Informação principal exibida na barra'),
-            model: Gtk.StringList.new(modes.map(m => m[1])),
-        });
-        const current = settings.get_string('panel-mode');
-        modeRow.selected = Math.max(0, modes.findIndex(m => m[0] === current));
-        modeRow.connect('notify::selected', () => {
-            settings.set_string('panel-mode', modes[modeRow.selected][0]);
-        });
-        panelGroup.add(modeRow);
-
         // tema de cores
         const temas = [
             ['auto',       _('Automático (acento do sistema)')],
@@ -63,6 +42,24 @@ export default class ClaudeUsagePrefs extends ExtensionPreferences {
         });
         panelGroup.add(temaRow);
 
+        // formato do label
+        const formatos = [
+            ['full',     _('Completo — S 62% 1h52m · H 46% · W 35%')],
+            ['pct-only', _('Só porcentagem — S 62% · H 46% · W 35%')],
+            ['spark',    _('Mini barras — ▓▓▓░░ 62% · ▓▓░░░ 46% · ▓▓░░░ 35%')],
+        ];
+        const formatoRow = new Adw.ComboRow({
+            title: _('Formato do label'),
+            subtitle: _('Como o uso aparece na barra superior'),
+            model: Gtk.StringList.new(formatos.map(f => f[1])),
+        });
+        const currentFormato = settings.get_string('label-format');
+        formatoRow.selected = Math.max(0, formatos.findIndex(f => f[0] === currentFormato));
+        formatoRow.connect('notify::selected', () => {
+            settings.set_string('label-format', formatos[formatoRow.selected][0]);
+        });
+        panelGroup.add(formatoRow);
+
         // mostrar ícone
         const iconRow = new Adw.SwitchRow({
             title: _('Mostrar ícone'),
@@ -80,95 +77,20 @@ export default class ClaudeUsagePrefs extends ExtensionPreferences {
         settings.bind('refresh-interval', intervalRow, 'value', Gio.SettingsBindFlags.DEFAULT);
         panelGroup.add(intervalRow);
 
-        // =================== Página: Limites do plano ===================
+        // =================== Página: Uso ===================
         const limitsPage = new Adw.PreferencesPage({
-            title: _('Limites'),
+            title: _('Uso'),
             icon_name: 'speedometer-symbolic',
         });
         window.add(limitsPage);
 
-        // plano de assinatura
-        const planGroup = new Adw.PreferencesGroup({ title: _('Plano') });
-        limitsPage.add(planGroup);
-
-        const planos = [
-            ['api',   _('API — pay-as-you-go (os valores $ são o custo real)')],
-            ['pro',   _('Pro — ~$20/mês (os valores $ são custo equivalente de API)')],
-            ['max5',  _('Max 5× — ~$100/mês')],
-            ['max20', _('Max 20× — ~$200/mês')],
-        ];
-        const planRow = new Adw.ComboRow({
-            title: _('Meu plano'),
-            subtitle: _('Exibido no popup para contextualizar os valores em dólar'),
-            model: Gtk.StringList.new(planos.map(p => p[1])),
-        });
-        const currentPlan = settings.get_string('subscription-plan');
-        planRow.selected = Math.max(0, planos.findIndex(p => p[0] === currentPlan));
-        planRow.connect('notify::selected', () => {
-            settings.set_string('subscription-plan', planos[planRow.selected][0]);
-        });
-        planGroup.add(planRow);
-
         const infoGroup = new Adw.PreferencesGroup({
-            description: _('A Anthropic não publica os limites exatos em tokens. ' +
-                'Informe valores aproximados do seu plano para ver a porcentagem de uso. ' +
-                'Deixe em 0 para mostrar apenas tokens e custo.'),
+            title: _('Dados em tempo real'),
+            description: _('Plano, % de uso e horários de reset são lidos diretamente do ' +
+                'claude.ai via credenciais OAuth armazenadas em ~/.claude/.credentials.json. ' +
+                'Não é necessário configurar nada manualmente.'),
         });
         limitsPage.add(infoGroup);
-
-        const limitGroup = new Adw.PreferencesGroup({ title: _('Limites de tokens') });
-        limitsPage.add(limitGroup);
-
-        const sessionLimit = new Adw.SpinRow({
-            title: _('Limite da sessão (5h)'),
-            subtitle: _('Tokens por janela rolante de 5 horas'),
-            adjustment: new Gtk.Adjustment({ lower: 0, upper: 2000000000, step_increment: 100000, page_increment: 1000000 }),
-        });
-        settings.bind('session-token-limit', sessionLimit, 'value', Gio.SettingsBindFlags.DEFAULT);
-        limitGroup.add(sessionLimit);
-
-        const dailyLimit = new Adw.SpinRow({
-            title: _('Limite diário'),
-            subtitle: _('Tokens por dia (desde a meia-noite). 0 = não exibir %'),
-            adjustment: new Gtk.Adjustment({ lower: 0, upper: 2000000000, step_increment: 100000, page_increment: 1000000 }),
-        });
-        settings.bind('daily-token-limit', dailyLimit, 'value', Gio.SettingsBindFlags.DEFAULT);
-        limitGroup.add(dailyLimit);
-
-        const weekLimit = new Adw.SpinRow({
-            title: _('Limite semanal'),
-            subtitle: _('Tokens por semana'),
-            adjustment: new Gtk.Adjustment({ lower: 0, upper: 2000000000, step_increment: 1000000, page_increment: 10000000 }),
-        });
-        settings.bind('weekly-token-limit', weekLimit, 'value', Gio.SettingsBindFlags.DEFAULT);
-        limitGroup.add(weekLimit);
-
-        // reset semanal
-        const resetGroup = new Adw.PreferencesGroup({
-            title: _('Reset semanal'),
-            description: _('Quando sua semana de uso reinicia'),
-        });
-        limitsPage.add(resetGroup);
-
-        const days = [_('Segunda'), _('Terça'), _('Quarta'), _('Quinta'),
-                      _('Sexta'), _('Sábado'), _('Domingo')];
-        const dayRow = new Adw.ComboRow({
-            title: _('Dia do reset'),
-            model: Gtk.StringList.new(days),
-        });
-        dayRow.selected = settings.get_int('weekly-reset-weekday');
-        dayRow.connect('notify::selected', () => {
-            settings.set_int('weekly-reset-weekday', dayRow.selected);
-        });
-        resetGroup.add(dayRow);
-
-        const hourRow = new Adw.SpinRow({
-            title: _('Hora do reset'),
-            subtitle: _('Hora local (0–23)'),
-            adjustment: new Gtk.Adjustment({ lower: 0, upper: 23, step_increment: 1, page_increment: 1 }),
-        });
-        settings.bind('weekly-reset-hour', hourRow, 'value', Gio.SettingsBindFlags.DEFAULT);
-        resetGroup.add(hourRow);
 
         // =================== Página: Sobre ===================
         const aboutPage = new Adw.PreferencesPage({

@@ -22,6 +22,8 @@ import sys
 import time
 import glob
 import argparse
+import urllib.request
+import urllib.error
 from datetime import datetime, timezone, timedelta
 
 # ---------------------------------------------------------------------------
@@ -38,7 +40,8 @@ DATA_DIR = os.path.join(
 )
 OUTPUT_FILE = os.path.join(DATA_DIR, "usage.json")
 CACHE_FILE = os.path.join(DATA_DIR, "cache.json")
-CONFIG_FILE = os.path.join(DATA_DIR, "config.json")
+CREDENTIALS_FILE = os.path.join(HOME, ".claude", ".credentials.json")
+CLAUDE_USAGE_API = "https://api.anthropic.com/api/oauth/usage"
 
 # ---------------------------------------------------------------------------
 # Preços públicos (USD por 1 milhão de tokens). Usados só para *estimar* custo.
@@ -56,17 +59,6 @@ DEFAULT_PRICE = (3.00, 15.00, 3.75, 0.30)  # fallback = sonnet
 
 # Janela rolante de sessão da Anthropic (5 horas).
 SESSION_WINDOW_H = 5
-
-DEFAULT_CONFIG = {
-    # Limites do plano (em tokens) para cálculo de %. 0 = desconhecido.
-    "session_token_limit": 0,
-    "daily_token_limit": 0,
-    "weekly_token_limit": 0,
-    # Reset semanal: dia da semana (0=segunda ... 6=domingo) e hora local.
-    "weekly_reset_weekday": 0,
-    "weekly_reset_hour": 0,
-}
-
 
 def price_for(model):
     if not model:
@@ -95,10 +87,43 @@ def load_json(path, default):
         return default
 
 
-def load_config():
-    cfg = dict(DEFAULT_CONFIG)
-    cfg.update(load_json(CONFIG_FILE, {}))
-    return cfg
+def load_credentials():
+    """Lê o token OAuth do Claude Code armazenado em ~/.claude/.credentials.json."""
+    try:
+        with open(CREDENTIALS_FILE, "r", encoding="utf-8") as f:
+            creds = json.load(f)
+        oauth = creds.get("claudeAiOauth", {})
+        return {
+            "access_token": oauth.get("accessToken", ""),
+            "subscription_type": oauth.get("subscriptionType", "unknown"),
+            "rate_limit_tier": oauth.get("rateLimitTier", ""),
+            "expires_at": oauth.get("expiresAt", 0),
+        }
+    except Exception:
+        return {}
+
+
+def fetch_claude_usage(access_token):
+    """
+    Busca uso real via GET /api/oauth/usage do claude.ai.
+    Retorna o JSON da resposta ou None em caso de falha.
+    Não faz chamadas de completions — não consome tokens.
+    """
+    if not access_token:
+        return None
+    req = urllib.request.Request(
+        CLAUDE_USAGE_API,
+        headers={
+            "Authorization": f"Bearer {access_token}",
+            "Content-Type": "application/json",
+            "User-Agent": "claude-code/2.1.161",
+        },
+    )
+    try:
+        with urllib.request.urlopen(req, timeout=8) as r:
+            return json.loads(r.read().decode())
+    except Exception:
+        return None
 
 
 # ---------------------------------------------------------------------------
@@ -219,7 +244,10 @@ def weekly_reset_bounds(now_local, weekday, hour):
     return start, start + timedelta(days=7)
 
 
-def build_summary(records, cfg):
+def build_summary(records):
+    creds = load_credentials()
+    api_data = fetch_claude_usage(creds.get("access_token", ""))
+
     now = datetime.now(timezone.utc)
     now_local = datetime.now().astimezone()
     tz = now_local.tzinfo
@@ -251,8 +279,14 @@ def build_summary(records, cfg):
 
     # limites de tempo
     midnight_local = now_local.replace(hour=0, minute=0, second=0, microsecond=0)
-    week_start_local, week_reset_local = weekly_reset_bounds(
-        now_local, cfg["weekly_reset_weekday"], cfg["weekly_reset_hour"])
+
+    # Reset semanal: puxar da API se disponível, senão usa segunda 00h como fallback
+    api_seven = (api_data or {}).get("seven_day") or {}
+    if api_seven.get("resets_at"):
+        week_reset_local = datetime.fromisoformat(api_seven["resets_at"]).astimezone(tz)
+        week_start_local = week_reset_local - timedelta(days=7)
+    else:
+        week_start_local, week_reset_local = weekly_reset_bounds(now_local, 0, 0)
 
     # ---- janela de sessão de 5h (rolante, ancorada na 1ª msg do bloco) ----
     block_start = None
@@ -299,37 +333,44 @@ def build_summary(records, cfg):
     cutoff = (now_local - timedelta(days=14)).strftime("%Y-%m-%d")
     daily = {k: v for k, v in daily.items() if k >= cutoff}
 
-    def pct(used, limit):
-        if not limit:
-            return None
-        return round(min(used / limit, 1.0) * 100, 1)
+    # Percentuais e resets reais da API
+    api_five = (api_data or {}).get("five_hour") or {}
+    session_pct = api_five.get("utilization")      # % real da Anthropic
+    session_reset_iso = (
+        api_five.get("resets_at") or
+        (session_reset.isoformat() if session_reset else None)
+    )
+    week_pct = api_seven.get("utilization")        # % real da Anthropic
+    week_reset_iso = (
+        api_seven.get("resets_at") or
+        week_reset_local.isoformat()
+    )
 
     summary = {
         "generated_at": now.isoformat(),
         "session": {
             **session,
-            "reset_at": session_reset.isoformat() if session_reset else None,
-            "limit": cfg["session_token_limit"],
-            "pct": pct(session["tokens"], cfg["session_token_limit"]),
+            "reset_at": session_reset_iso,
+            "pct": session_pct,
             "window_hours": SESSION_WINDOW_H,
         },
         "today": {
             **today,
             "reset_at": (midnight_local + timedelta(days=1)).isoformat(),
-            "limit": cfg["daily_token_limit"],
-            "pct": pct(today["tokens"], cfg["daily_token_limit"]),
+            "pct": None,
         },
         "week": {
             **week,
             "start_at": week_start_local.isoformat(),
-            "reset_at": week_reset_local.isoformat(),
-            "limit": cfg["weekly_token_limit"],
-            "pct": pct(week["tokens"], cfg["weekly_token_limit"]),
+            "reset_at": week_reset_iso,
+            "pct": week_pct,
         },
         "total": total,
         "by_model": dict(sorted(by_model.items(), key=lambda kv: -kv[1]["cost"])),
         "daily": dict(sorted(daily.items())),
-        "config": cfg,
+        "plan": creds.get("subscription_type", "unknown"),
+        "api_source": api_data is not None,
+        "api_usage": api_data,
     }
     return summary
 
@@ -372,9 +413,8 @@ def main():
     args = ap.parse_args()
 
     def run_once():
-        cfg = load_config()
         records = collect_records()
-        summary = build_summary(records, cfg)
+        summary = build_summary(records)
         write_summary(summary)
         return summary
 
