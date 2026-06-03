@@ -4,7 +4,7 @@
   "description": "Mostra o uso do Claude (Claude Code) em tempo real na barra superior: tokens, custo estimado, janela de sessão de 5h e reset semanal. 100% local, não consome tokens.",
   "version-name": "1.0.0",
   "shell-version": ["45", "46", "47", "48", "49", "50"],
-  "url": "https://github.com/eltobsjr/claude-usage-indicator",
+  "url": "https://github.com/eltobsjr/claudeUsageIndicator",
   "settings-schema": "org.gnome.shell.extensions.claude-usage",
   "gettext-domain": "claude-usage"
 }
