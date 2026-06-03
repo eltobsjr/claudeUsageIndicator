@@ -41,18 +41,19 @@ Escolha o formato que prefere nas preferências da extensão:
 
 ## Posição na barra
 
-O seletor de posição exibe uma mini barra de preview mostrando exatamente onde o
+O seletor de posição exibe uma mini barra interativa mostrando exatamente onde o
 indicador ficará antes de confirmar a escolha:
+
+![Seletor de posição](docs/prefs-display.png)
 
 | Opção | Resultado na barra |
 |---|---|
-| **Borda esquerda** | `[Claude] [Ativid.] ─── 12:00 ─── [🔊][●][●][☰]` |
-| **Esquerda** | `[Ativid.] [Claude] ─── 12:00 ─── [🔊][●][●][☰]` |
-| **Direita** | `[Ativid.] ──────── 12:00 ─── [Claude] [🔊][●][●][☰]` |
+| **Borda esquerda** | ![topbar borda esquerda](docs/topbar-position-left-edge.png) |
+| **Esquerda** | ![topbar esquerda](docs/topbar-position-left.png) |
+| **Direita** | Imediatamente à esquerda dos ícones nativos (volume, rede, bateria, menu) |
 
-> Os ícones nativos do GNOME (volume, rede, bateria, menu) ficam sempre na direita
-> e não podem ser movidos por extensões — a opção **Direita** coloca o indicador
-> imediatamente à esquerda deles.
+> Os ícones nativos do GNOME ficam sempre fixos na direita — extensões não podem
+> ultrapassá-los. A opção **Direita** coloca o indicador logo à esquerda deles.
 
 A posição é aplicada ao vivo ao mudar — sem precisar reiniciar a extensão.
 
