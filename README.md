@@ -41,16 +41,20 @@ Escolha o formato que prefere nas preferências da extensão:
 
 ## Posição na barra
 
-Escolha onde o indicador aparece nas preferências da extensão:
+O seletor de posição exibe uma mini barra de preview mostrando exatamente onde o
+indicador ficará antes de confirmar a escolha:
 
-| Opção | Descrição |
+| Opção | Resultado na barra |
 |---|---|
-| **Direita (padrão)** | Lado direito, próximo ao centro |
-| **Direita — 1° da borda direita** | Primeiro elemento entrando pela borda direita |
-| **Esquerda** | Lado esquerdo (após o botão Atividades) |
-| **Esquerda — 1° da borda esquerda** | Antes do botão Atividades, na extremidade esquerda |
+| **Borda esquerda** | `[Claude] [Ativid.] ─── 12:00 ─── [🔊][●][●][☰]` |
+| **Esquerda** | `[Ativid.] [Claude] ─── 12:00 ─── [🔊][●][●][☰]` |
+| **Direita** | `[Ativid.] ──────── 12:00 ─── [Claude] [🔊][●][●][☰]` |
 
-A posição é aplicada ao vivo ao mudar nas preferências — sem precisar reiniciar a extensão.
+> Os ícones nativos do GNOME (volume, rede, bateria, menu) ficam sempre na direita
+> e não podem ser movidos por extensões — a opção **Direita** coloca o indicador
+> imediatamente à esquerda deles.
+
+A posição é aplicada ao vivo ao mudar — sem precisar reiniciar a extensão.
 
 ---
 
@@ -124,8 +128,8 @@ gnome-extensions prefs claude-usage@eltobsjr.gmail.com
 
 Ou pelo menu da extensão → **Preferências**.
 
-- **Exibição** — tema de cores, formato do label, posição na barra, mostrar/ocultar ícone,
-  intervalo de atualização.
+- **Exibição** — tema de cores, formato do label, mostrar/ocultar ícone, intervalo de
+  atualização. A posição na barra usa um seletor visual com preview interativo da mini barra.
 - **Uso** — informativo: os dados de plano e % de uso vêm automaticamente das
   credenciais OAuth do Claude Code, sem configuração manual.
 

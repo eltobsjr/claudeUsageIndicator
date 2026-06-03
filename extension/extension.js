@@ -377,9 +377,6 @@ export default class ClaudeUsageExtension extends Extension {
         this._indicator = new ClaudeIndicator(this);
         const pos = this._settings.get_string('panel-position');
         switch (pos) {
-            case 'right-edge':
-                Main.panel.addToStatusArea(this.uuid, this._indicator, 0, 'right');
-                break;
             case 'left':
                 Main.panel.addToStatusArea(this.uuid, this._indicator, -1, 'left');
                 break;
