@@ -1,5 +1,13 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <schemalist>
+  <enum id="org.gnome.shell.extensions.claude-usage.color-theme">
+    <value nick="auto" value="0"/>
+    <value nick="sistema" value="1"/>
+    <value nick="catppuccin" value="2"/>
+    <value nick="verde" value="3"/>
+    <value nick="laranja" value="4"/>
+  </enum>
+
   <enum id="org.gnome.shell.extensions.claude-usage.panel-mode">
     <value nick="session-tokens" value="0"/>
     <value nick="session-pct" value="1"/>
@@ -34,6 +42,12 @@
       <summary>Limite de tokens da sessão de 5h (0 = desconhecido)</summary>
     </key>
 
+    <key name="daily-token-limit" type="i">
+      <default>0</default>
+      <range min="0" max="2000000000"/>
+      <summary>Limite de tokens diário (0 = desconhecido)</summary>
+    </key>
+
     <key name="weekly-token-limit" type="i">
       <default>0</default>
       <range min="0" max="2000000000"/>
@@ -50,6 +64,11 @@
       <default>0</default>
       <range min="0" max="23"/>
       <summary>Hora do reset semanal</summary>
+    </key>
+
+    <key name="color-theme" enum="org.gnome.shell.extensions.claude-usage.color-theme">
+      <default>'auto'</default>
+      <summary>Tema de cores do popup</summary>
     </key>
   </schema>
 </schemalist>
