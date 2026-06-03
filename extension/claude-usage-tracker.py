@@ -60,6 +60,7 @@ SESSION_WINDOW_H = 5
 DEFAULT_CONFIG = {
     # Limites do plano (em tokens) para cálculo de %. 0 = desconhecido.
     "session_token_limit": 0,
+    "daily_token_limit": 0,
     "weekly_token_limit": 0,
     # Reset semanal: dia da semana (0=segunda ... 6=domingo) e hora local.
     "weekly_reset_weekday": 0,
@@ -312,7 +313,12 @@ def build_summary(records, cfg):
             "pct": pct(session["tokens"], cfg["session_token_limit"]),
             "window_hours": SESSION_WINDOW_H,
         },
-        "today": today,
+        "today": {
+            **today,
+            "reset_at": (midnight_local + timedelta(days=1)).isoformat(),
+            "limit": cfg["daily_token_limit"],
+            "pct": pct(today["tokens"], cfg["daily_token_limit"]),
+        },
         "week": {
             **week,
             "start_at": week_start_local.isoformat(),
