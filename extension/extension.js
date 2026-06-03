@@ -265,13 +265,16 @@ class ClaudeIndicator extends PanelMenu.Button {
     }
 
     _loadData() {
-        try {
-            const [ok, raw] = Gio.File.new_for_path(USAGE_FILE).load_contents(null);
-            if (ok) {
-                this._data = JSON.parse(new TextDecoder().decode(raw));
-                this._render();
-            }
-        } catch (_e) { this._panelLabel.text = '—'; }
+        const file = Gio.File.new_for_path(USAGE_FILE);
+        file.load_contents_async(null, (f, res) => {
+            try {
+                const [ok, raw] = f.load_contents_finish(res);
+                if (ok) {
+                    this._data = JSON.parse(new TextDecoder().decode(raw));
+                    this._render();
+                }
+            } catch (_e) { this._panelLabel.text = '—'; }
+        });
     }
 
     _render() {

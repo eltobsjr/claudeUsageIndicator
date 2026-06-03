@@ -31,7 +31,7 @@ uninstall:
 # Gera o .zip para enviar ao extensions.gnome.org
 pack: schema
 	@cd $(EXT) && zip -r -FS ../$(UUID).shell-extension.zip . \
-		-x '*/__pycache__/*' '*.pyc'
+		-x '*/__pycache__/*' '*.pyc' 'schemas/gschemas.compiled'
 	@echo "Pacote: $(UUID).shell-extension.zip"
 
 # Roda o tracker manualmente e imprime resumo

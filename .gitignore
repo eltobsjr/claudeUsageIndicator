@@ -3,5 +3,6 @@ __pycache__/
 *.shell-extension.zip
 extension/schemas/gschemas.compiled
 memory/
+venv/
 ClaudeUsageIndicatorSecondBrain/
 CLAUDE.md
