@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="16" height="16" viewBox="0 0 16 16">
+  <g fill="#5c5c5c">
+    <g transform="translate(8,8)">
+      <path id="petal" d="M0,-6.6 C0.7,-4.2 0.9,-2.2 0,0 C-0.9,-2.2 -0.7,-4.2 0,-6.6 Z"/>
+      <use xlink:href="#petal" transform="rotate(22.5)"/>
+      <use xlink:href="#petal" transform="rotate(45)"/>
+      <use xlink:href="#petal" transform="rotate(67.5)"/>
+      <use xlink:href="#petal" transform="rotate(90)"/>
+      <use xlink:href="#petal" transform="rotate(112.5)"/>
+      <use xlink:href="#petal" transform="rotate(135)"/>
+      <use xlink:href="#petal" transform="rotate(157.5)"/>
+      <use xlink:href="#petal" transform="rotate(180)"/>
+      <use xlink:href="#petal" transform="rotate(202.5)"/>
+      <use xlink:href="#petal" transform="rotate(225)"/>
+      <use xlink:href="#petal" transform="rotate(247.5)"/>
+      <use xlink:href="#petal" transform="rotate(270)"/>
+      <use xlink:href="#petal" transform="rotate(292.5)"/>
+      <use xlink:href="#petal" transform="rotate(315)"/>
+      <use xlink:href="#petal" transform="rotate(337.5)"/>
+    </g>
+  </g>
+</svg>

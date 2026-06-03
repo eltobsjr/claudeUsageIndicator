@@ -1,0 +1,5 @@
+__pycache__/
+*.pyc
+*.shell-extension.zip
+extension/schemas/gschemas.compiled
+memory/

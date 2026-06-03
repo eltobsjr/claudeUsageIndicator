@@ -1,0 +1,55 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<schemalist>
+  <enum id="org.gnome.shell.extensions.claude-usage.panel-mode">
+    <value nick="session-tokens" value="0"/>
+    <value nick="session-pct" value="1"/>
+    <value nick="week-pct" value="2"/>
+    <value nick="session-cost" value="3"/>
+    <value nick="today-cost" value="4"/>
+    <value nick="session-reset" value="5"/>
+  </enum>
+
+  <schema id="org.gnome.shell.extensions.claude-usage"
+          path="/org/gnome/shell/extensions/claude-usage/">
+
+    <key name="refresh-interval" type="i">
+      <default>30</default>
+      <range min="10" max="600"/>
+      <summary>Intervalo de atualização (segundos)</summary>
+    </key>
+
+    <key name="panel-mode" enum="org.gnome.shell.extensions.claude-usage.panel-mode">
+      <default>'session-tokens'</default>
+      <summary>O que mostrar na barra superior</summary>
+    </key>
+
+    <key name="show-icon" type="b">
+      <default>true</default>
+      <summary>Mostrar o ícone na barra</summary>
+    </key>
+
+    <key name="session-token-limit" type="i">
+      <default>0</default>
+      <range min="0" max="2000000000"/>
+      <summary>Limite de tokens da sessão de 5h (0 = desconhecido)</summary>
+    </key>
+
+    <key name="weekly-token-limit" type="i">
+      <default>0</default>
+      <range min="0" max="2000000000"/>
+      <summary>Limite de tokens semanal (0 = desconhecido)</summary>
+    </key>
+
+    <key name="weekly-reset-weekday" type="i">
+      <default>0</default>
+      <range min="0" max="6"/>
+      <summary>Dia da semana do reset (0=segunda ... 6=domingo)</summary>
+    </key>
+
+    <key name="weekly-reset-hour" type="i">
+      <default>0</default>
+      <range min="0" max="23"/>
+      <summary>Hora do reset semanal</summary>
+    </key>
+  </schema>
+</schemalist>

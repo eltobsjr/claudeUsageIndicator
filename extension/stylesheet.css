@@ -1,0 +1,155 @@
+/* Claude Usage Indicator
+ * Estilo pensado para herdar o tema do usuário: usa accent color do sistema
+ * quando disponível e cores semânticas padrão do Shell. Funciona em temas
+ * claros, escuros e personalizados (openbar etc.).
+ */
+
+/* ---- painel ---- */
+.cu-panel {
+    spacing: 4px;
+}
+
+.cu-panel-label {
+    font-feature-settings: "tnum";
+    font-weight: 600;
+    margin-left: 2px;
+}
+
+.cu-panel-icon {
+    /* recolore via tema (símbolico) */
+}
+
+.cu-panel-label.cu-warn {
+    color: #e5a50a; /* amarelo (fallback) */
+}
+
+.cu-panel-label.cu-crit {
+    color: #e01b24; /* vermelho (fallback) */
+}
+
+/* ---- título do menu ---- */
+.cu-menu-title {
+    padding-top: 6px;
+    padding-bottom: 2px;
+}
+
+.cu-title-label {
+    font-weight: 800;
+    font-size: 1.05em;
+}
+
+.cu-updated {
+    font-size: 0.8em;
+    opacity: 0.6;
+}
+
+.cu-section-header {
+    font-weight: 700;
+    font-size: 0.85em;
+    opacity: 0.65;
+    margin: 2px 0;
+}
+
+/* ---- linha de estatística ---- */
+.cu-stat-row {
+    padding: 6px 12px;
+}
+
+.cu-stat-box {
+    spacing: 5px;
+}
+
+.cu-stat-header {
+    spacing: 6px;
+}
+
+.cu-stat-icon {
+    opacity: 0.8;
+}
+
+.cu-stat-title {
+    font-weight: 700;
+}
+
+.cu-stat-reset {
+    font-size: 0.85em;
+    opacity: 0.7;
+    font-feature-settings: "tnum";
+}
+
+.cu-stat-footer {
+    spacing: 6px;
+}
+
+.cu-stat-main {
+    font-feature-settings: "tnum";
+    font-weight: 600;
+}
+
+.cu-stat-sub {
+    font-size: 0.85em;
+    opacity: 0.65;
+    font-feature-settings: "tnum";
+}
+
+/* ---- barra de progresso ---- */
+.cu-progress-track {
+    height: 6px;
+    border-radius: 100px;
+    background-color: rgba(127, 127, 127, 0.22);
+    margin: 1px 0;
+}
+
+.cu-progress-fill {
+    height: 6px;
+    border-radius: 100px;
+    /* accent color do sistema (GNOME 47+); cai para azul em temas antigos */
+    background-color: -st-accent-color, #3584e4;
+    min-width: 0;
+}
+
+.cu-progress-fill.cu-level-warn {
+    background-color: #e5a50a;
+}
+
+.cu-progress-fill.cu-level-crit {
+    background-color: #e01b24;
+}
+
+/* ---- por modelo ---- */
+.cu-model-list {
+    spacing: 4px;
+    padding: 0 12px 2px 12px;
+}
+
+.cu-model-row {
+    spacing: 8px;
+}
+
+.cu-model-name {
+    font-size: 0.9em;
+    opacity: 0.9;
+}
+
+.cu-model-val {
+    font-size: 0.9em;
+    font-feature-settings: "tnum";
+    opacity: 0.75;
+}
+
+.cu-model-empty {
+    opacity: 0.5;
+    font-style: italic;
+    padding: 0 12px;
+}
+
+/* ---- total ---- */
+.cu-total-label {
+    font-weight: 700;
+    opacity: 0.85;
+}
+
+.cu-total-value {
+    font-feature-settings: "tnum";
+    font-weight: 700;
+}
