@@ -172,12 +172,14 @@ class ClaudeIndicator extends PanelMenu.Button {
         this._buildMenu();
 
         this._settings.connectObject(
-            'changed::refresh-interval', () => this._restartTimer(),
-            'changed::show-icon',        () => this._applyShowIcon(),
-            'changed::color-theme',      () => this._applyTheme(),
+            'changed::refresh-interval',    () => this._restartTimer(),
+            'changed::show-icon',           () => this._applyShowIcon(),
+            'changed::color-theme',         () => this._applyTheme(),
+            'changed::subscription-plan',   () => this._applyPlan(),
             this);
         this._applyShowIcon();
         this._applyTheme();
+        this._applyPlan();
         this._syncConfig();
         this._tick();
         this._restartTimer();
@@ -190,6 +192,9 @@ class ClaudeIndicator extends PanelMenu.Button {
         const hbox = new St.BoxLayout({ x_expand: true });
         hbox.add_child(new St.Label({ text: 'Claude', style_class: 'cu-head-title',
             x_expand: true, y_align: Clutter.ActorAlign.CENTER }));
+        this._planLabel = new St.Label({ text: '', style_class: 'cu-head-plan',
+            y_align: Clutter.ActorAlign.CENTER });
+        hbox.add_child(this._planLabel);
         this._timeLabel = new St.Label({ text: '', style_class: 'cu-head-time',
             y_align: Clutter.ActorAlign.CENTER });
         hbox.add_child(this._timeLabel);
@@ -232,6 +237,12 @@ class ClaudeIndicator extends PanelMenu.Button {
         const theme = this._settings.get_string('color-theme');
         const cls = theme !== 'auto' ? 'cu-tema-' + theme : null;
         [this._rowSession, this._rowToday, this._rowWeek].forEach(r => r.setTheme(cls));
+    }
+
+    _applyPlan() {
+        const NOMES = { api: 'API', pro: 'Pro', max5: 'Max 5×', max20: 'Max 20×' };
+        const plan = this._settings.get_string('subscription-plan');
+        this._planLabel.text = NOMES[plan] ?? plan;
     }
 
     _restartTimer() {
@@ -293,27 +304,10 @@ class ClaudeIndicator extends PanelMenu.Button {
         const week    = d.week    || {};
         const now     = Date.now();
 
-        // --- painel: "D:35% 14h · S:4% 2d3h" ---
-        function panelBit(b, reset) {
-            const val = (b.pct != null) ? `${Math.round(b.pct)}%` : humanTokens(b.tokens || 0);
-            const cd  = reset ? ` ${fmtCountdown(reset)}` : '';
-            return `${val}${cd}`;
-        }
-        this._panelLabel.text =
-            `${panelBit(today, today.reset_at)}  ·  ${panelBit(week, week.reset_at)}`;
-
-        const worstPct = today.pct ?? week.pct ?? null;
-        this._panelLabel.remove_style_class_name('cu-warn');
-        this._panelLabel.remove_style_class_name('cu-crit');
-        if (worstPct != null) {
-            if (worstPct >= 90) this._panelLabel.add_style_class_name('cu-crit');
-            else if (worstPct >= 70) this._panelLabel.add_style_class_name('cu-warn');
-        }
-
         // timestamp no cabeçalho
         this._timeLabel.text = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
 
-        // frações de tempo (barra cinza quando sem limite)
+        // frações de tempo (usadas como fallback de % quando não há limite configurado)
         const sessionFrac = (session.pct == null && session.reset_at)
             ? Math.max(0, Math.min(1, 1 - (new Date(session.reset_at) - now) / 18_000_000))
             : null;
@@ -325,6 +319,26 @@ class ClaudeIndicator extends PanelMenu.Button {
                 (now - new Date(week.start_at)) /
                 (new Date(week.reset_at) - new Date(week.start_at))))
             : null;
+
+        // --- painel: "S 47% 2h · H 65% 11h · W 80% 4d" ---
+        function panelBit(prefix, b, reset, frac) {
+            const pct = b.pct != null ? b.pct : (frac != null ? Math.round(frac * 100) : null);
+            const val = pct != null ? `${Math.round(pct)}%` : humanTokens(b.tokens || 0);
+            const cd  = reset ? ` ${fmtCountdown(reset)}` : '';
+            return `${prefix} ${val}${cd}`;
+        }
+        this._panelLabel.text =
+            `${panelBit('S', session, session.reset_at, sessionFrac)} · ` +
+            `${panelBit('H', today, today.reset_at, todayFrac)} · ` +
+            `${panelBit('W', week, week.reset_at, weekFrac)}`;
+
+        const worstPct = session.pct ?? today.pct ?? week.pct ?? null;
+        this._panelLabel.remove_style_class_name('cu-warn');
+        this._panelLabel.remove_style_class_name('cu-crit');
+        if (worstPct != null) {
+            if (worstPct >= 90) this._panelLabel.add_style_class_name('cu-crit');
+            else if (worstPct >= 70) this._panelLabel.add_style_class_name('cu-warn');
+        }
 
         this._rowSession.update(session, {
             pct: session.pct, reset: session.reset_at, timeFrac: sessionFrac });

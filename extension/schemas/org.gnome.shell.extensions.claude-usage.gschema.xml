@@ -70,5 +70,10 @@
       <default>'auto'</default>
       <summary>Tema de cores do popup</summary>
     </key>
+
+    <key name="subscription-plan" type="s">
+      <default>'pro'</default>
+      <summary>Plano de assinatura (api | pro | max5 | max20)</summary>
+    </key>
   </schema>
 </schemalist>

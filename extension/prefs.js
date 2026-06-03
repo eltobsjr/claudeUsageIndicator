@@ -87,6 +87,28 @@ export default class ClaudeUsagePrefs extends ExtensionPreferences {
         });
         window.add(limitsPage);
 
+        // plano de assinatura
+        const planGroup = new Adw.PreferencesGroup({ title: _('Plano') });
+        limitsPage.add(planGroup);
+
+        const planos = [
+            ['api',   _('API — pay-as-you-go (os valores $ são o custo real)')],
+            ['pro',   _('Pro — ~$20/mês (os valores $ são custo equivalente de API)')],
+            ['max5',  _('Max 5× — ~$100/mês')],
+            ['max20', _('Max 20× — ~$200/mês')],
+        ];
+        const planRow = new Adw.ComboRow({
+            title: _('Meu plano'),
+            subtitle: _('Exibido no popup para contextualizar os valores em dólar'),
+            model: Gtk.StringList.new(planos.map(p => p[1])),
+        });
+        const currentPlan = settings.get_string('subscription-plan');
+        planRow.selected = Math.max(0, planos.findIndex(p => p[0] === currentPlan));
+        planRow.connect('notify::selected', () => {
+            settings.set_string('subscription-plan', planos[planRow.selected][0]);
+        });
+        planGroup.add(planRow);
+
         const infoGroup = new Adw.PreferencesGroup({
             description: _('A Anthropic não publica os limites exatos em tokens. ' +
                 'Informe valores aproximados do seu plano para ver a porcentagem de uso. ' +
