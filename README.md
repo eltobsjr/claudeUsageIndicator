@@ -1,12 +1,13 @@
 # Claude Usage Indicator
 
 Uma extensão do **GNOME Shell** que mostra o uso do **Claude Code** em tempo
-real na barra superior: porcentagem da sessão de 5h, uso de hoje e da semana.
-Ao clicar, abre um painel com estatísticas detalhadas.
+real na barra superior: porcentagem da janela de sessão de 5h e do limite
+semanal, com countdown até o reset. Ao clicar, abre um painel com os detalhes.
 
-> **100% local.** Lê os arquivos de transcrição que o Claude Code já grava em
-> `~/.claude/projects/` e as credenciais OAuth em `~/.claude/.credentials.json`.
-> Nenhum dado sai da máquina e nenhum token é consumido.
+> **Mesma fonte que o `/usage` do Claude Code.** Lê os percentuais de uso direto
+> do claude.ai (`GET /api/oauth/usage`) usando o token OAuth que o Claude Code já
+> guarda em `~/.claude/.credentials.json`. Esse endpoint só devolve estatísticas
+> de uso — **não consome tokens**.
 
 ---
 
@@ -75,16 +76,17 @@ As barras de progresso e os rótulos se adaptam ao tema escolhido:
 
 ## Recursos
 
-- **Painel compacto** na barra superior com percentual real de uso (S/H/W) —
-  sessão de 5h · hoje · semana — com countdown até o reset.
-- **Dados reais da Anthropic**: % de uso e horários de reset lidos diretamente
-  da API do claude.ai via OAuth, sem precisar configurar nada.
-- **Popup detalhado** com sessão de 5h (janela rolante), uso de hoje, uso da
-  semana e quebra por modelo (Opus / Sonnet / Haiku).
+- **Painel compacto** na barra superior com o percentual real de uso (S/W) —
+  sessão de 5h · semana — e countdown até o reset.
+- **Dados reais da Anthropic**: % de uso, severidade e horários de reset lidos
+  direto do claude.ai via OAuth, sem precisar configurar nada.
+- **Popup detalhado** com a sessão de 5h e o limite semanal (mais o limite
+  semanal de Opus, nos planos Max).
 - **Barras de progresso** que mudam de cor (verde → amarelo → vermelho)
-  conforme você se aproxima do limite.
+  seguindo a severidade reportada pela própria Anthropic.
 - **Plano detectado automaticamente** (Pro / Max) a partir das credenciais OAuth.
-- **Estimativa de custo** pelos preços públicos da API por modelo.
+- **Resiliente a rate-limit**: a chamada à API é cacheada e com back-off, então
+  o indicador nunca mostra valor inventado — só dado real ou "—".
 
 ---
 
@@ -99,8 +101,8 @@ As barras de progresso e os rótulos se adaptam ao tema escolhido:
 ## Instalação
 
 ```bash
-git clone https://github.com/eltobsjr/claude-usage-indicator.git
-cd claude-usage-indicator
+git clone https://github.com/eltobsjr/claudeUsageIndicator.git
+cd claudeUsageIndicator
 ./install.sh
 gnome-extensions enable claude-usage@eltobsjr.gmail.com
 ```
@@ -138,20 +140,19 @@ Ou pelo menu da extensão → **Preferências**.
 
 ## Como funciona
 
-O Claude Code grava cada sessão em arquivos `JSONL` dentro de
-`~/.claude/projects/`. A extensão dispara um pequeno script Python
-(`claude-usage-tracker.py`) que:
+A extensão dispara um pequeno script Python (`claude-usage-tracker.py`) que:
 
-1. Lê esses arquivos com cache incremental por `mtime`,
-2. Deduplica por `messageId:requestId`,
-3. Agrega por janela de 5h, dia e semana,
-4. Busca **% de uso real e horários de reset** via `GET /api/oauth/usage` do
-   claude.ai, usando o token OAuth de `~/.claude/.credentials.json`,
-5. Estima o custo pelos preços públicos por modelo,
-6. Grava um resumo em `~/.local/share/claude-usage/usage.json`.
+1. Lê o token OAuth de `~/.claude/.credentials.json`,
+2. Consulta **% de uso, severidade e horários de reset** via
+   `GET /api/oauth/usage` do claude.ai (endpoint de estatísticas — não consome
+   tokens),
+3. **Cacheia** a resposta e respeita o `retry-after` do rate-limit, servindo o
+   último valor bom (marcado como desatualizado) em caso de falha,
+4. Grava um resumo em `~/.local/share/claude-usage/usage.json`.
 
-A extensão lê esse JSON e desenha a interface — sem nenhuma chamada de rede
-adicional e sem consumir tokens.
+A extensão lê esse JSON e desenha a interface. O intervalo de atualização da UI
+é independente da chamada HTTP real — você pode atualizar a tela com frequência
+sem martelar a API.
 
 Você também pode usar o tracker sozinho, sem a extensão:
 
@@ -171,7 +172,7 @@ claude-usage-indicator/
 │   ├── prefs.js                     # preferências (libadwaita)
 │   ├── metadata.json
 │   ├── stylesheet.css               # estilo adaptável ao tema
-│   ├── claude-usage-tracker.py      # parser dos JSONL + consulta OAuth
+│   ├── claude-usage-tracker.py      # consulta OAuth + cache/back-off
 │   ├── icons/claude-symbolic.svg
 │   └── schemas/*.gschema.xml
 ├── docs/                            # screenshots
@@ -185,10 +186,10 @@ claude-usage-indicator/
 
 ## Notas
 
-- Os **custos são estimativas** baseadas nos preços públicos da API. Planos de
-  assinatura (Pro/Max) têm faturamento diferente — use como referência relativa.
-- A **% de uso** da sessão e da semana vem diretamente da Anthropic via OAuth.
-  O "hoje" não tem equivalente na API, então exibe tokens e custo sem percentual.
+- A **% de uso** da sessão e da semana vem diretamente da Anthropic via OAuth —
+  é o mesmo número que o comando `/usage` do Claude Code mostra.
+- O endpoint `/api/oauth/usage` é interno do Claude Code e **não é documentado**;
+  pode mudar sem aviso. Se isso acontecer, o indicador mostra "—" em vez de erro.
 
 ---
 

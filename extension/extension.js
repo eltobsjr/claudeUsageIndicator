@@ -15,15 +15,6 @@ const USAGE_FILE = GLib.build_filenamev([DATA_DIR, 'usage.json']);
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
-function humanTokens(n) {
-    n = n || 0;
-    if (n >= 1_000_000) return (n / 1_000_000).toFixed(1) + 'M';
-    if (n >= 1_000)     return (n / 1_000).toFixed(1) + 'k';
-    return String(n);
-}
-
-function fmtCost(c) { return '$' + (c || 0).toFixed(2); }
-
 function fmtCountdown(isoStr) {
     if (!isoStr) return '';
     const diff = Math.floor((new Date(isoStr) - Date.now()) / 1000);
@@ -34,6 +25,18 @@ function fmtCountdown(isoStr) {
     if (d > 0) return `${d}d${h}h`;
     if (h > 0) return `${h}h${m}m`;
     return `${m}m`;
+}
+
+// Nível de alerta de uma janela. Usa a `severity` oficial da API quando houver;
+// senão cai para limiares de porcentagem.
+function levelFor(w) {
+    const s = (w?.severity || '').toLowerCase();
+    if (s && s !== 'normal') return s === 'warning' ? 'warn' : 'crit';
+    const p = w?.pct;
+    if (p == null) return 'ok';
+    if (p >= 90) return 'crit';
+    if (p >= 70) return 'warn';
+    return 'ok';
 }
 
 // ---------------------------------------------------------------------------
@@ -53,11 +56,10 @@ class ProgressBar extends St.BoxLayout {
 
     setFraction(frac, level) {
         this._pct = Math.max(0, Math.min(1, frac || 0));
-        ['cu-warn', 'cu-crit', 'cu-time'].forEach(c =>
+        ['cu-warn', 'cu-crit'].forEach(c =>
             this._fill.remove_style_class_name(c));
-        if (level === 'crit')     this._fill.add_style_class_name('cu-crit');
+        if (level === 'crit')      this._fill.add_style_class_name('cu-crit');
         else if (level === 'warn') this._fill.add_style_class_name('cu-warn');
-        else if (level === 'time') this._fill.add_style_class_name('cu-time');
         this.queue_relayout();
     }
 
@@ -77,27 +79,30 @@ class MetricRow extends PopupMenu.PopupBaseMenuItem {
 
         const box = new St.BoxLayout({ vertical: true, x_expand: true });
 
-        // linha topo: rótulo (esq) + reset countdown (dir)
+        // linha topo: rótulo (esq) + porcentagem em destaque (dir)
         const top = new St.BoxLayout({ x_expand: true });
         this._label = new St.Label({
             text: label, style_class: 'cu-metric-label', x_expand: true,
-            y_align: Clutter.ActorAlign.CENTER,
+            y_align: Clutter.ActorAlign.END,
         });
-        this._right = new St.Label({
-            text: '', style_class: 'cu-metric-right',
-            y_align: Clutter.ActorAlign.CENTER,
+        this._pct = new St.Label({
+            text: '', style_class: 'cu-metric-pct',
+            y_align: Clutter.ActorAlign.END,
         });
         top.add_child(this._label);
-        top.add_child(this._right);
+        top.add_child(this._pct);
         box.add_child(top);
 
         // barra de progresso (sempre visível)
         this._bar = new ProgressBar();
         box.add_child(this._bar);
 
-        // linha rodapé: tokens · custo · reqs
-        this._detail = new St.Label({ text: '', style_class: 'cu-metric-detail' });
-        box.add_child(this._detail);
+        // rodapé: countdown até o reset (secundário)
+        this._reset = new St.Label({
+            text: '', style_class: 'cu-metric-reset',
+            x_align: Clutter.ActorAlign.END, x_expand: true,
+        });
+        box.add_child(this._reset);
 
         this.add_child(box);
     }
@@ -114,31 +119,28 @@ class MetricRow extends PopupMenu.PopupBaseMenuItem {
         }
     }
 
-    update(bucket, opts = {}) {
-        const tokens = bucket.tokens || 0;
-        const cost   = bucket.cost   || 0;
-        const count  = bucket.count  || 0;
+    // window = { pct, reset_at, severity }  — sempre vindo da API de uso.
+    update(window) {
+        const w = window || {};
+        this._pct.remove_style_class_name('cu-warn');
+        this._pct.remove_style_class_name('cu-crit');
 
-        this._detail.text = `${humanTokens(tokens)} · ${fmtCost(cost)} · ${count} reqs`;
-
-        // lado direito: "X% usado" ou countdown
-        if (opts.pct != null) {
-            const p = Math.round(opts.pct);
-            this._right.text = `${p}% usado`;
-            this._right.remove_style_class_name('cu-warn');
-            this._right.remove_style_class_name('cu-crit');
-            let level = 'ok';
-            if (opts.pct >= 90) { level = 'crit'; this._right.add_style_class_name('cu-crit'); }
-            else if (opts.pct >= 70) { level = 'warn'; this._right.add_style_class_name('cu-warn'); }
-            this._bar.setFraction(opts.pct / 100, level);
-        } else {
-            // sem limite: countdown + barra cinza baseada em tempo
-            const cd = fmtCountdown(opts.reset);
-            this._right.text = cd ? `↺ ${cd}` : '';
-            this._right.remove_style_class_name('cu-warn');
-            this._right.remove_style_class_name('cu-crit');
-            this._bar.setFraction(opts.timeFrac || 0, 'time');
+        // Sem dado real: não inventamos número.
+        if (w.pct == null) {
+            this._pct.text = '—';
+            this._reset.text = '';
+            this._bar.setFraction(0, 'ok');
+            return;
         }
+
+        this._pct.text = `${Math.round(w.pct)}%`;
+        const cd = fmtCountdown(w.reset_at);
+        this._reset.text = cd ? `reseta em ${cd}` : '';
+
+        const level = levelFor(w);
+        if (level === 'crit')      this._pct.add_style_class_name('cu-crit');
+        else if (level === 'warn') this._pct.add_style_class_name('cu-warn');
+        this._bar.setFraction(w.pct / 100, level);
     }
 });
 
@@ -200,21 +202,23 @@ class ClaudeIndicator extends PanelMenu.Button {
         this.menu.addMenuItem(head);
         this.menu.addMenuItem(new PopupMenu.PopupSeparatorMenuItem());
 
-        // métricas
-        this._rowSession = new MetricRow(_('Sessão (5h)'));
-        this._rowToday   = new MetricRow(_('Hoje'));
-        this._rowWeek    = new MetricRow(_('Semana'));
-        this.menu.addMenuItem(this._rowSession);
-        this.menu.addMenuItem(this._rowToday);
-        this.menu.addMenuItem(this._rowWeek);
-        this.menu.addMenuItem(new PopupMenu.PopupSeparatorMenuItem());
+        // linha de status (login necessário / sessão expirada / indisponível)
+        this._statusRow = new PopupMenu.PopupBaseMenuItem({ reactive: false,
+            can_focus: false, style_class: 'cu-status' });
+        this._statusLabel = new St.Label({ text: '', style_class: 'cu-status-label',
+            x_expand: true });
+        this._statusRow.add_child(this._statusLabel);
+        this.menu.addMenuItem(this._statusRow);
+        this._statusRow.visible = false;
 
-        // por modelo (compacto)
-        this._modelBox = new PopupMenu.PopupBaseMenuItem({ reactive: false, can_focus: false,
-            style_class: 'cu-models' });
-        this._modelList = new St.BoxLayout({ vertical: true, x_expand: true });
-        this._modelBox.add_child(this._modelList);
-        this.menu.addMenuItem(this._modelBox);
+        // métricas (vindas da API de uso do claude.ai)
+        this._rowSession  = new MetricRow(_('Sessão (5h)'));
+        this._rowWeek     = new MetricRow(_('Semana'));
+        this._rowWeekOpus = new MetricRow(_('Semana · Opus'));
+        this.menu.addMenuItem(this._rowSession);
+        this.menu.addMenuItem(this._rowWeek);
+        this.menu.addMenuItem(this._rowWeekOpus);
+        this._rowWeekOpus.visible = false;  // só em planos Max com limite de Opus
         this.menu.addMenuItem(new PopupMenu.PopupSeparatorMenuItem());
 
         // ações
@@ -234,7 +238,7 @@ class ClaudeIndicator extends PanelMenu.Button {
     _applyTheme() {
         const theme = this._settings.get_string('color-theme');
         const cls = theme !== 'auto' ? 'cu-tema-' + theme : null;
-        [this._rowSession, this._rowToday, this._rowWeek].forEach(r => r.setTheme(cls));
+        [this._rowSession, this._rowWeek, this._rowWeekOpus].forEach(r => r.setTheme(cls));
     }
 
     _applyPlan() {
@@ -243,7 +247,7 @@ class ClaudeIndicator extends PanelMenu.Button {
 
     _restartTimer() {
         if (this._timer) { GLib.source_remove(this._timer); this._timer = null; }
-        const iv = Math.max(10, this._settings.get_int('refresh-interval'));
+        const iv = Math.max(15, this._settings.get_int('refresh-interval'));
         this._timer = GLib.timeout_add_seconds(GLib.PRIORITY_DEFAULT, iv, () => {
             this._tick(); return GLib.SOURCE_CONTINUE;
         });
@@ -254,11 +258,12 @@ class ClaudeIndicator extends PanelMenu.Button {
         }
     }
 
-    _tick() {
-        const py = 'python3';
+    _tick(force = false) {
         const script = GLib.build_filenamev([this._ext.path, 'claude-usage-tracker.py']);
+        const argv = ['python3', script];
+        if (force) argv.push('--force');
         try {
-            Gio.Subprocess.new([py, script],
+            Gio.Subprocess.new(argv,
                 Gio.SubprocessFlags.STDOUT_SILENCE | Gio.SubprocessFlags.STDERR_SILENCE)
                 .wait_async(null, () => this._loadData());
         } catch (_e) { this._loadData(); }
@@ -282,78 +287,68 @@ class ClaudeIndicator extends PanelMenu.Button {
         if (!d) return;
 
         const session = d.session || {};
-        const today   = d.today   || {};
         const week    = d.week    || {};
-        const now     = Date.now();
 
-        // plano real (da API) e timestamp no cabeçalho
-        const PLAN_NOMES = { pro: 'Pro', max: 'Max', api: 'API', unknown: '?' };
+        // plano real (da API). Cobre variações tipo "max_5x", "max_20x".
         const planKey = (d.plan || 'unknown').toLowerCase();
-        this._planLabel.text = PLAN_NOMES[planKey] ?? d.plan ?? '?';
-        this._timeLabel.text = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+        let planTxt = '';
+        if (planKey.startsWith('max'))      planTxt = 'Max';
+        else if (planKey.startsWith('pro')) planTxt = 'Pro';
+        else if (planKey === 'free')        planTxt = 'Free';
+        else if (planKey.includes('api'))   planTxt = 'API';
+        else if (planKey !== 'unknown')     planTxt = d.plan;
+        else                                planTxt = '?';
+        this._planLabel.text = planTxt;
 
-        // frações de tempo (usadas como fallback de % quando não há limite configurado)
-        const sessionFrac = (session.pct == null && session.reset_at)
-            ? Math.max(0, Math.min(1, 1 - (new Date(session.reset_at) - now) / 18_000_000))
-            : null;
-        const n = new Date();
-        const todayFrac = today.pct == null
-            ? (n.getHours() * 3600 + n.getMinutes() * 60) / 86400 : null;
-        const weekFrac = (week.pct == null && week.start_at && week.reset_at)
-            ? Math.max(0, Math.min(1,
-                (now - new Date(week.start_at)) /
-                (new Date(week.reset_at) - new Date(week.start_at))))
-            : null;
+        // marca dados servidos do cache (API indisponível no momento)
+        this._timeLabel.text = (d.stale ? '⏳ ' : '') +
+            new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+
+        // --- linha de status (estado vazio / problema) ---
+        let status = '';
+        if (!d.has_credentials)   status = _('Faça login no Claude Code para ver o uso.');
+        else if (d.token_expired) status = _('Sessão expirada — reabra o Claude Code.');
+        else if (!d.api_source)   status = _('Uso indisponível no momento.');
+        this._statusRow.visible = status !== '';
+        this._statusLabel.text = status;
 
         // --- painel ---
         const fmt = this._settings.get_string('label-format');
 
-        function sparkBar(frac, len = 5) {
-            const filled = Math.round(Math.max(0, Math.min(1, frac ?? 0)) * len);
+        function sparkBar(pct, len = 5) {
+            const frac = Math.max(0, Math.min(1, (pct ?? 0) / 100));
+            const filled = Math.round(frac * len);
             return '▓'.repeat(filled) + '░'.repeat(len - filled);
         }
 
-        function panelBit(prefix, b, reset, frac) {
-            const pct = b.pct != null ? b.pct : (frac != null ? Math.round(frac * 100) : null);
-            const pctFrac = pct != null ? pct / 100 : (frac ?? 0);
-            const val = pct != null ? `${Math.round(pct)}%` : humanTokens(b.tokens || 0);
-            if (fmt === 'spark')    return `${sparkBar(pctFrac)} ${val}`;
+        function panelBit(prefix, w) {
+            // sem dado real: mostra travessão, nunca um número inventado
+            if (w.pct == null) return `${prefix} —`;
+            const val = `${Math.round(w.pct)}%`;
+            if (fmt === 'spark')    return `${sparkBar(w.pct)} ${val}`;
             if (fmt === 'pct-only') return `${prefix} ${val}`;
-            const cd = reset ? ` ${fmtCountdown(reset)}` : '';
+            const cd = w.reset_at ? ` ${fmtCountdown(w.reset_at)}` : '';
             return `${prefix} ${val}${cd}`;
         }
         this._panelLabel.text =
-            `${panelBit('S', session, session.reset_at, sessionFrac)} · ` +
-            `${panelBit('H', today, today.reset_at, todayFrac)} · ` +
-            `${panelBit('W', week, week.reset_at, weekFrac)}`;
+            `${panelBit('S', session)} · ${panelBit('W', week)}`;
 
-        const worstPct = session.pct ?? today.pct ?? week.pct ?? null;
+        const levels = [levelFor(session), levelFor(week)];
         this._panelLabel.remove_style_class_name('cu-warn');
         this._panelLabel.remove_style_class_name('cu-crit');
-        if (worstPct != null) {
-            if (worstPct >= 90) this._panelLabel.add_style_class_name('cu-crit');
-            else if (worstPct >= 70) this._panelLabel.add_style_class_name('cu-warn');
-        }
+        if (levels.includes('crit')) this._panelLabel.add_style_class_name('cu-crit');
+        else if (levels.includes('warn')) this._panelLabel.add_style_class_name('cu-warn');
 
-        this._rowSession.update(session, {
-            pct: session.pct, reset: session.reset_at, timeFrac: sessionFrac });
-        this._rowToday.update(today, {
-            pct: today.pct, reset: today.reset_at, timeFrac: todayFrac });
-        this._rowWeek.update(week, {
-            pct: week.pct, reset: week.reset_at, timeFrac: weekFrac });
+        this._rowSession.update(session);
+        this._rowWeek.update(week);
 
-        // por modelo
-        this._modelList.destroy_all_children();
-        const models = d.by_model || {};
-        for (const [name, b] of Object.entries(models)) {
-            const row = new St.BoxLayout({ x_expand: true, style_class: 'cu-model-row' });
-            const short = name.replace('claude-', '').replace(/-\d{8}$/, '');
-            row.add_child(new St.Label({ text: short, style_class: 'cu-model-name',
-                x_expand: true, y_align: Clutter.ActorAlign.CENTER }));
-            row.add_child(new St.Label({
-                text: `${humanTokens(b.tokens)}  ${fmtCost(b.cost)}`,
-                style_class: 'cu-model-val', y_align: Clutter.ActorAlign.CENTER }));
-            this._modelList.add_child(row);
+        // limite semanal de Opus (só planos Max o expõem)
+        const opus = d.week_opus;
+        if (opus && opus.pct != null) {
+            this._rowWeekOpus.visible = true;
+            this._rowWeekOpus.update(opus);
+        } else {
+            this._rowWeekOpus.visible = false;
         }
     }
 

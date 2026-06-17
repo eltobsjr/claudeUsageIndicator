@@ -1,8 +1,8 @@
 {
   "uuid": "claude-usage@eltobsjr.gmail.com",
   "name": "Claude Usage Indicator",
-  "description": "Mostra o uso do Claude (Claude Code) em tempo real na barra superior: tokens, custo estimado, janela de sessão de 5h e reset semanal. 100% local, não consome tokens.",
-  "version-name": "1.1.0",
+  "description": "Mostra o uso do Claude Code em tempo real na barra superior: % da janela de sessão de 5h e do limite semanal, com horários de reset. Lê o uso direto do claude.ai via OAuth do Claude Code — não consome tokens.",
+  "version-name": "2.0.0",
   "shell-version": ["45", "46", "47", "48", "49", "50"],
   "url": "https://github.com/eltobsjr/claudeUsageIndicator",
   "settings-schema": "org.gnome.shell.extensions.claude-usage",

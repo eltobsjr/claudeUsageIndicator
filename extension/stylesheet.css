@@ -14,70 +14,80 @@
 .cu-panel-label.cu-crit { color: #e01b24; }
 
 /* ---- cabeçalho do popup ---- */
-.cu-head { padding: 8px 12px 6px; }
+.cu-head { padding: 10px 14px 4px; }
 
 .cu-head-title {
     font-weight: 800;
-    font-size: 1.05em;
+    font-size: 1.1em;
 }
 
 .cu-head-plan {
-    font-size: 0.72em;
-    font-weight: 600;
-    padding: 1px 6px;
-    border-radius: 4px;
+    font-size: 0.7em;
+    font-weight: 700;
+    padding: 2px 8px;
+    border-radius: 100px;
     margin-right: 8px;
-    background-color: rgba(255,255,255,0.1);
-    opacity: 0.75;
+    color: -st-accent-fg-color, #ffffff;
+    background-color: -st-accent-color, #3584e4;
 }
 
 .cu-head-time {
-    font-size: 0.85em;
-    opacity: 0.55;
+    font-size: 0.82em;
+    opacity: 0.5;
     font-feature-settings: "tnum";
 }
 
 /* ---- seção de métrica ---- */
 .cu-metric {
-    padding: 10px 14px 8px;
+    padding: 8px 14px 6px;
 }
 
 .cu-metric-label {
-    font-weight: 700;
-    font-size: 0.95em;
-}
-
-.cu-metric-right {
-    font-size: 0.85em;
     font-weight: 600;
-    font-feature-settings: "tnum";
-    opacity: 0.75;
+    font-size: 0.92em;
+    opacity: 0.85;
 }
 
-.cu-metric-right.cu-warn { color: #e5a50a; opacity: 1; }
-.cu-metric-right.cu-crit { color: #e01b24; opacity: 1; }
-
-.cu-metric-detail {
-    font-size: 0.82em;
-    opacity: 0.55;
+/* porcentagem em destaque — é o dado principal */
+.cu-metric-pct {
+    font-size: 1.5em;
+    font-weight: 800;
     font-feature-settings: "tnum";
-    margin-top: 3px;
+}
+
+.cu-metric-pct.cu-warn { color: #e5a50a; }
+.cu-metric-pct.cu-crit { color: #e01b24; }
+
+/* countdown até o reset — secundário */
+.cu-metric-reset {
+    font-size: 0.78em;
+    opacity: 0.5;
+    font-feature-settings: "tnum";
+    margin-top: 2px;
+}
+
+/* ---- linha de status (login / sessão expirada / indisponível) ---- */
+.cu-status { padding: 2px 14px 6px; }
+
+.cu-status-label {
+    font-size: 0.88em;
+    color: #e5a50a;
 }
 
 /* ---- barra de progresso ---- */
 .cu-bar-track {
-    height: 8px;
+    height: 9px;
     border-radius: 100px;
     background-color: rgba(127, 127, 127, 0.18);
-    margin: 5px 0 2px;
+    margin: 6px 0 3px;
 }
 
 .cu-bar-fill {
-    height: 8px;
+    height: 9px;
     border-radius: 100px;
     background-color: -st-accent-color, #3584e4;
     min-width: 0;
-    transition-duration: 200ms;
+    transition-duration: 250ms;
     transition-property: width;
 }
 
@@ -90,32 +100,9 @@
 /* estados: especificidade igual → ganham por vir depois dos temas */
 .cu-bar-fill.cu-warn { background-color: #e5a50a; }
 .cu-bar-fill.cu-crit { background-color: #e01b24; }
-.cu-bar-fill.cu-time { background-color: rgba(127, 127, 127, 0.40); }
-
-/* barra de tempo temática: especificidade 3 classes → ganha sobre .cu-time genérica */
-.cu-bar-fill.cu-tema-sistema.cu-time    { background-color: rgba(22, 53, 112, 0.45); }
-.cu-bar-fill.cu-tema-catppuccin.cu-time { background-color: rgba(138, 173, 244, 0.35); }
-.cu-bar-fill.cu-tema-verde.cu-time      { background-color: rgba(38, 162, 105, 0.40); }
-.cu-bar-fill.cu-tema-laranja.cu-time    { background-color: rgba(233, 84, 32, 0.35); }
 
 /* ---- rótulos das seções temáticos ---- */
 .cu-metric-label.cu-tema-sistema    { color: #6ba3d9; }
 .cu-metric-label.cu-tema-catppuccin { color: #8aadf4; }
 .cu-metric-label.cu-tema-verde      { color: #57e389; }
 .cu-metric-label.cu-tema-laranja    { color: #ff9a6c; }
-
-/* ---- por modelo ---- */
-.cu-models { padding: 6px 14px; }
-
-.cu-model-row { spacing: 8px; padding: 2px 0; }
-
-.cu-model-name {
-    font-size: 0.88em;
-    opacity: 0.85;
-}
-
-.cu-model-val {
-    font-size: 0.88em;
-    font-feature-settings: "tnum";
-    opacity: 0.60;
-}

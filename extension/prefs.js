@@ -44,9 +44,9 @@ export default class ClaudeUsagePrefs extends ExtensionPreferences {
 
         // formato do label
         const formatos = [
-            ['full',     _('Completo — S 62% 1h52m · H 46% · W 35%')],
-            ['pct-only', _('Só porcentagem — S 62% · H 46% · W 35%')],
-            ['spark',    _('Mini barras — ▓▓▓░░ 62% · ▓▓░░░ 46% · ▓▓░░░ 35%')],
+            ['full',     _('Completo — S 62% 1h52m · W 35% 5d')],
+            ['pct-only', _('Só porcentagem — S 62% · W 35%')],
+            ['spark',    _('Mini barras — ▓▓▓░░ 62% · ▓▓░░░ 35%')],
         ];
         const formatoRow = new Adw.ComboRow({
             title: _('Formato do label'),
@@ -72,7 +72,7 @@ export default class ClaudeUsagePrefs extends ExtensionPreferences {
         const intervalRow = new Adw.SpinRow({
             title: _('Intervalo de atualização'),
             subtitle: _('Frequência de leitura dos dados (segundos)'),
-            adjustment: new Gtk.Adjustment({ lower: 10, upper: 600, step_increment: 5, page_increment: 30 }),
+            adjustment: new Gtk.Adjustment({ lower: 15, upper: 600, step_increment: 5, page_increment: 30 }),
         });
         settings.bind('refresh-interval', intervalRow, 'value', Gio.SettingsBindFlags.DEFAULT);
         panelGroup.add(intervalRow);
@@ -228,7 +228,8 @@ export default class ClaudeUsagePrefs extends ExtensionPreferences {
         aboutPage.add(aboutGroup);
         aboutGroup.add(new Adw.ActionRow({
             title: _('Claude Usage Indicator'),
-            subtitle: _('Uso do Claude Code em tempo real, 100% local. Nenhum dado sai da máquina e nenhum token é consumido.'),
+            subtitle: _('Uso do Claude Code em tempo real. Lê os percentuais direto do ' +
+                'claude.ai via OAuth do Claude Code; nenhum token é consumido.'),
         }));
     }
 }
