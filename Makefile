@@ -42,6 +42,7 @@ check:
 	@d=$$(mktemp -d); for p in macchiato frappe mocha; do for a in blue mauve green red; do \
 		python3 scripts/eltob-setup.py render --template $(EXT)/stylesheet.tpl.css --out $$d/s.css --palette $$p --accent $$a || exit 1; \
 		! grep -q '{{' $$d/s.css || { echo "token sem valor ($$p/$$a)"; exit 1; }; done; done; rm -rf $$d
+	@python3 scripts/eltob-setup.py contrast
 	@echo "check ok"
 
 # Gera o .zip só da extensão, com o tema padrão (Macchiato/azul) já renderizado

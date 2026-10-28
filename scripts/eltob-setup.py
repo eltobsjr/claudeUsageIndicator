@@ -24,15 +24,52 @@ def mix(a, b, t): return rgb_hex([x + (y - x) * t for x, y in zip(hex_rgb(a), he
 
 def swatch(h): r, g, b = hex_rgb(h); return f'\x1b[48;2;{r};{g};{b}m  \x1b[0m'
 
+# Cores de destaque do GNOME (gsettings org.gnome.desktop.interface accent-color), como o libadwaita as define
+GNOME_ACCENTS = {'blue': '#3584e4', 'teal': '#2190a4', 'green': '#3a944a', 'yellow': '#c88800', 'orange': '#ed5b00',
+                 'red': '#e62d42', 'pink': '#d56199', 'purple': '#9141ac', 'slate': '#6f8396'}
+
+def _lin(v):
+    v /= 255
+    return v / 12.92 if v <= 0.03928 else ((v + 0.055) / 1.055) ** 2.4
+def lum(h):
+    r, g, b = hex_rgb(h)
+    return 0.2126 * _lin(r) + 0.7152 * _lin(g) + 0.0722 * _lin(b)
+def ratio(a, b):
+    hi, lo = sorted((lum(a), lum(b)), reverse=True)
+    return (hi + 0.05) / (lo + 0.05)
+
+def ink_for(accent, candidates):
+    """Texto sobre a cor de destaque: o candidato de maior contraste (garante ≥ 4,5:1 quando possível)."""
+    for c in candidates:              # prefere a ordem dada (tinta da paleta antes do preto/branco puros)
+        if ratio(c, accent) >= 4.5:
+            return c
+    return max(candidates, key=lambda c: ratio(c, accent))
+
+def text_accent(accent, surface, minimum=4.5):
+    """Versão do destaque para TEXTO/ícone sobre `surface`: clareia até passar o contraste mínimo."""
+    c, t = accent, 0.0
+    while ratio(c, surface) < minimum and t < 1.0:
+        t += 0.05; c = mix(accent, '#ffffff', t)
+    return c
+
+def system_accent():
+    """Destaque que o GNOME está usando agora (cai para o azul se não der para ler)."""
+    try:
+        out = subprocess.run(['gsettings', 'get', 'org.gnome.desktop.interface', 'accent-color'],
+                             capture_output=True, text=True, timeout=3).stdout.strip().strip("'")
+        return GNOME_ACCENTS.get(out, GNOME_ACCENTS['blue'])
+    except Exception:
+        return GNOME_ACCENTS['blue']
+
 def theme_values(theme):
     colors = dict(DATA['palettes'][theme['palette']]['colors'])
-    accent = colors[theme['accent']]
-    vals = dict(colors, accent=accent, accent_ink=colors['base'], accent_press=mix(accent, colors['base'], .18),
-                ok=colors['green'], warn=colors['yellow'], crit=colors['red'], off=colors['overlay1'])
+    accent = system_accent() if theme.get('follow_system_accent') else colors[theme['accent']]
+    ink = ink_for(accent, [colors['crust'], '#ffffff', '#000000'])
+    vals = dict(colors, accent=accent, accent_ink=ink, accent_text=text_accent(accent, colors['mantle']),
+                accent_press=mix(accent, colors['base'], .18),
+                ok=colors['green'], warn=colors['yellow'], crit=colors['red'], off=colors['subtext0'])
     rgb = {k: ', '.join(map(str, hex_rgb(v))) for k, v in vals.items()}
     out = dict(vals)
-    if theme.get('follow_system_accent'):  # GNOME 47+: o Shell resolve a cor do acento do sistema
-        out.update(accent='-st-accent-color', accent_ink='-st-accent-fg-color', accent_press='-st-accent-color')
     geo = DATA['geometry']
     out.update({f'radius.{k}': v for k, v in geo['radius'].items()}, menu_width=geo['menu_width'])
     return out, rgb
@@ -45,7 +82,7 @@ def render_css(template, theme, title):
         if key not in vals: raise SystemExit(f'token desconhecido no template: {{{{{key}}}}}')
         return str(vals[key])
     body = re.sub(r'\{\{([\w.]+)\}\}', sub, template)
-    mode = 'acento do sistema' if theme.get('follow_system_accent') else theme['accent']
+    mode = 'destaque do GNOME (fixado na instalação)' if theme.get('follow_system_accent') else theme['accent']
     head = (f"/* {title} — gerado pelo instalador (eltob-setup.py).\n"
             f"   Paleta: {DATA['palettes'][theme['palette']]['label']} · destaque: {mode}.\n"
             f"   Não edite as cores aqui: rode ./install.sh --reconfigure. */\n\n")
@@ -132,7 +169,7 @@ def cmd_ask(a):
         theme['palette'] = ui.pick('Paleta', [(k, v['label'] + '  ' + ''.join(swatch(v['colors'][c]) for c in ('base', 'surface0', 'blue', 'green', 'yellow', 'red')), v['hint'])
                                               for k, v in DATA['palettes'].items()], theme['palette'])
         pal = DATA['palettes'][theme['palette']]['colors']
-        items = [('system', 'Seguir o destaque do GNOME (47+)', 'muda junto com Ajustes › Aparência')]
+        items = [('system', 'Usar o destaque atual do GNOME', 'lê Ajustes › Aparência agora; rode ./install.sh --reconfigure se trocar')]
         items += [(k, f'{label}  {swatch(pal[k])}', None) for k, label in DATA['accents'].items()]
         cur = 'system' if theme.get('follow_system_accent') else theme['accent']
         pick = ui.pick('Cor de destaque', items, cur)
@@ -199,6 +236,20 @@ def cmd_extra(a):
     print('true' if json.loads(Path(a.answers).read_text())['extras'].get(a.key, True) else 'false')
     return 0
 
+def cmd_contrast(_):
+    """Falha (exit 1) se alguma paleta/destaque tiver tinta ou texto de destaque abaixo de 4,5:1."""
+    bad = []
+    for pal in DATA['palettes']:
+        for acc in list(DATA['accents']) + ['system']:
+            v, _rgb = theme_values({'palette': pal, 'accent': 'blue' if acc == 'system' else acc, 'follow_system_accent': acc == 'system'})
+            checks = [('tinta sobre o destaque', v['accent_ink'], v['accent']), ('destaque como texto', v['accent_text'], v['mantle']),
+                      ('texto', v['text'], v['base']), ('texto secundário', v['subtext0'], v['base']), ('ok', v['ok'], v['mantle']),
+                      ('atenção', v['warn'], v['mantle']), ('erro', v['crit'], v['mantle'])]
+            bad += [(pal, acc, n, round(ratio(a, b), 2)) for n, a, b in checks if ratio(a, b) < 4.5]
+    for b in bad: print('contraste baixo:', *b)
+    print('contraste ok' if not bad else f'{len(bad)} combinações abaixo de 4,5:1')
+    return 1 if bad else 0
+
 def cmd_list(_):
     for k, v in DATA['palettes'].items(): print(k, '-', v['label'])
     print('destaques:', ', '.join(DATA['accents']))
@@ -219,6 +270,7 @@ def main():
     c.add_argument('--palette', default=DATA['default']['palette'], choices=list(DATA['palettes']))
     c.add_argument('--accent', default=DATA['default']['accent'], choices=list(DATA['accents'])); c.add_argument('--system-accent', action='store_true')
     c = sp.add_parser('extra'); c.set_defaults(fn=cmd_extra); c.add_argument('--answers', required=True); c.add_argument('key')
+    c = sp.add_parser('contrast'); c.set_defaults(fn=cmd_contrast)
     c = sp.add_parser('list'); c.set_defaults(fn=cmd_list)
     a = p.parse_args()
     try: return a.fn(a)
