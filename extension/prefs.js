@@ -22,26 +22,6 @@ export default class ClaudeUsagePrefs extends ExtensionPreferences {
         });
         page.add(panelGroup);
 
-        // tema de cores
-        const temas = [
-            ['auto',       _('Automático (acento do sistema)')],
-            ['sistema',    _('Sistema — Fedora Navy (#163570)')],
-            ['catppuccin', _('Catppuccin Macchiato')],
-            ['verde',      _('Verde GNOME')],
-            ['laranja',    _('Laranja Ubuntu')],
-        ];
-        const temaRow = new Adw.ComboRow({
-            title: _('Tema de cores'),
-            subtitle: _('Cor das barras de progresso e rótulos das seções'),
-            model: Gtk.StringList.new(temas.map(t => t[1])),
-        });
-        const currentTema = settings.get_string('color-theme');
-        temaRow.selected = Math.max(0, temas.findIndex(t => t[0] === currentTema));
-        temaRow.connect('notify::selected', () => {
-            settings.set_string('color-theme', temas[temaRow.selected][0]);
-        });
-        panelGroup.add(temaRow);
-
         // formato do label
         const formatos = [
             ['full',     _('Completo — S 62% 1h52m · W 35% 5d')],

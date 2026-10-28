@@ -50,8 +50,10 @@ class ProgressBar extends St.BoxLayout {
         this._fill = new St.Widget({ style_class: 'cu-bar-fill' });
         this.add_child(this._fill);
         this._pct = 0;
+        this._lastW = 0;   // última largura alocada conhecida
         // notify::allocation é mais confiável que notify::width no Wayland
         this.connect('notify::allocation', () => this._relayout());
+        this.connect('notify::mapped', () => this._relayout());
     }
 
     setFraction(frac, level) {
@@ -60,12 +62,20 @@ class ProgressBar extends St.BoxLayout {
             this._fill.remove_style_class_name(c));
         if (level === 'crit')      this._fill.add_style_class_name('cu-crit');
         else if (level === 'warn') this._fill.add_style_class_name('cu-warn');
+        // notify::allocation só dispara quando a largura muda; com a mesma largura e um valor
+        // novo o preenchimento ficava no número antigo
+        this._relayout();
         this.queue_relayout();
     }
 
     _relayout() {
-        const w = this.width;
-        if (w > 0) this._fill.width = Math.max(0, Math.round(w * this._pct));
+        // Só vale a largura ALOCADA: com o menu fechado `this.width` devolve a largura
+        // preferida da trilha, que é a do próprio preenchimento (realimentação: a barra
+        // encolhia a cada atualização).
+        const box = this.get_allocation_box();
+        const alloc = this.mapped ? box.get_width() : 0;
+        if (Number.isFinite(alloc) && alloc > 0) this._lastW = alloc;
+        if (this._lastW > 0) this._fill.width = Math.max(0, Math.round(this._lastW * this._pct));
     }
 });
 
@@ -107,18 +117,6 @@ class MetricRow extends PopupMenu.PopupBaseMenuItem {
         this.add_child(box);
     }
 
-    setTheme(cls) {
-        const all = ['cu-tema-sistema', 'cu-tema-catppuccin', 'cu-tema-verde', 'cu-tema-laranja'];
-        all.forEach(t => {
-            this._bar._fill.remove_style_class_name(t);
-            this._label.remove_style_class_name(t);
-        });
-        if (cls) {
-            this._bar._fill.add_style_class_name(cls);
-            this._label.add_style_class_name(cls);
-        }
-    }
-
     // window = { pct, reset_at, severity }  — sempre vindo da API de uso.
     update(window) {
         const w = window || {};
@@ -154,6 +152,8 @@ class ClaudeIndicator extends PanelMenu.Button {
         this._ext = ext;
         this._settings = ext.getSettings();
         this._data = null;
+        this._destroyed = false;
+        this._cancel = new Gio.Cancellable();
 
         // --- painel ---
         const panelBox = new St.BoxLayout({ style_class: 'panel-status-menu-box cu-panel' });
@@ -175,11 +175,9 @@ class ClaudeIndicator extends PanelMenu.Button {
         this._settings.connectObject(
             'changed::refresh-interval',    () => this._restartTimer(),
             'changed::show-icon',           () => this._applyShowIcon(),
-            'changed::color-theme',         () => this._applyTheme(),
             'changed::label-format',        () => { if (this._data) this._render(); },
             this);
         this._applyShowIcon();
-        this._applyTheme();
         this._applyPlan();
         this._tick();
         this._restartTimer();
@@ -235,12 +233,6 @@ class ClaudeIndicator extends PanelMenu.Button {
         this._panelIcon.visible = this._settings.get_boolean('show-icon');
     }
 
-    _applyTheme() {
-        const theme = this._settings.get_string('color-theme');
-        const cls = theme !== 'auto' ? 'cu-tema-' + theme : null;
-        [this._rowSession, this._rowWeek, this._rowWeekOpus].forEach(r => r.setTheme(cls));
-    }
-
     _applyPlan() {
         // Plano vem do usage.json (lido da API do claude.ai); atualizado em _render()
     }
@@ -265,20 +257,24 @@ class ClaudeIndicator extends PanelMenu.Button {
         try {
             Gio.Subprocess.new(argv,
                 Gio.SubprocessFlags.STDOUT_SILENCE | Gio.SubprocessFlags.STDERR_SILENCE)
-                .wait_async(null, () => this._loadData());
+                .wait_async(this._cancel, () => {
+                    if (!this._destroyed) this._loadData();
+                });
         } catch (_e) { this._loadData(); }
     }
 
     _loadData() {
+        if (this._destroyed) return;
         const file = Gio.File.new_for_path(USAGE_FILE);
-        file.load_contents_async(null, (f, res) => {
+        file.load_contents_async(this._cancel, (f, res) => {
+            if (this._destroyed) return;   // a extensão foi desativada enquanto lia o arquivo
             try {
                 const [ok, raw] = f.load_contents_finish(res);
                 if (ok) {
                     this._data = JSON.parse(new TextDecoder().decode(raw));
                     this._render();
                 }
-            } catch (_e) { this._panelLabel.text = '—'; }
+            } catch (_e) { if (!this._destroyed) this._panelLabel.text = '—'; }
         });
     }
 
@@ -353,6 +349,8 @@ class ClaudeIndicator extends PanelMenu.Button {
     }
 
     destroy() {
+        this._destroyed = true;
+        this._cancel.cancel();
         if (this._timer)  { GLib.source_remove(this._timer);  this._timer  = null; }
         if (this._cdTimer){ GLib.source_remove(this._cdTimer); this._cdTimer = null; }
         this._settings.disconnectObject(this);

@@ -27,7 +27,7 @@ Escolha o formato que prefere nas preferências da extensão:
 
 <table>
 <tr>
-<td><b>Exibição</b> — tema, formato do label, posição na barra, ícone, intervalo</td>
+<td><b>Exibição</b> — formato do label, posição na barra, ícone, intervalo</td>
 <td><b>Uso</b> — dados em tempo real via OAuth</td>
 <td><b>Sobre</b></td>
 </tr>
@@ -60,17 +60,9 @@ A posição é aplicada ao vivo ao mudar — sem precisar reiniciar a extensão.
 
 ---
 
-## Temas de cores
+## Visual
 
-As barras de progresso e os rótulos se adaptam ao tema escolhido:
-
-| Tema | Cor principal | Indicado para |
-|---|---|---|
-| **Automático** | `accent color` do sistema (GNOME 47+) | Qualquer distro |
-| **Sistema — Fedora Navy** | `#163570` (azul marinho) | Fedora / GNOME padrão |
-| **Catppuccin Macchiato** | `#8aadf4` (azul suave) | Catppuccin |
-| **Verde GNOME** | `#26a269` (verde) | GNOME verde |
-| **Laranja Ubuntu** | `#e95420` (laranja) | Ubuntu |
+O tema (paleta e cor de destaque) é escolhido no `./install.sh` e vale para as barras de progresso, rótulos e avisos. Veja [Tema e opções](#tema-e-opções-escolhidos-na-instalação).
 
 ---
 
@@ -121,6 +113,19 @@ make pack      # gera o .zip para o extensions.gnome.org
 
 ---
 
+### Tema e opções (escolhidos na instalação)
+
+O `./install.sh` pergunta no terminal, antes de copiar qualquer coisa:
+
+- **Paleta**: Catppuccin Macchiato (padrão), Frappé ou Mocha, com uma prévia em cores.
+- **Cor de destaque**: 12 opções, ou **seguir o destaque do GNOME** (47+).
+- **Opções da extensão**: posição, formato do texto na barra, ícone e intervalo de atualização.
+
+Nenhuma cor fica escrita no código: o `stylesheet.css` é gerado na instalação a partir da paleta que você escolheu.
+Para refazer as escolhas, rode `./install.sh --reconfigure`. Sem terminal (CI, `curl | bash`) ou com `--yes`,
+vale o que já estava salvo ou o padrão. Também aceita `--palette macchiato|frappe|mocha`, `--accent blue|mauve|…` e `--system-accent`.
+Detalhes do padrão visual em [`docs/DESIGN.md`](docs/DESIGN.md).
+
 ## Configuração
 
 Abra as preferências em:
@@ -131,7 +136,7 @@ gnome-extensions prefs claude-usage@eltobsjr.gmail.com
 
 Ou pelo menu da extensão → **Preferências**.
 
-- **Exibição** — tema de cores, formato do label, mostrar/ocultar ícone, intervalo de
+- **Exibição** — formato do label, mostrar/ocultar ícone, intervalo de
   atualização. A posição na barra usa um seletor visual com preview interativo da mini barra.
 - **Uso** — informativo: os dados de plano e % de uso vêm automaticamente das
   credenciais OAuth do Claude Code, sem configuração manual.

@@ -1,0 +1,25 @@
+{
+  "palettes": {
+    "macchiato": {"label": "Catppuccin Macchiato", "hint": "escuro, suave (padrão)", "colors": {
+      "rosewater": "#f4dbd6", "pink": "#f5bde6", "mauve": "#c6a0f6", "red": "#ed8796", "peach": "#f5a97f",
+      "yellow": "#eed49f", "green": "#a6da95", "teal": "#8bd5ca", "sky": "#91d7e3", "sapphire": "#7dc4e4",
+      "blue": "#8aadf4", "lavender": "#b7bdf8", "text": "#cad3f5", "subtext0": "#a5adcb", "overlay1": "#8087a2",
+      "surface2": "#5b6078", "surface1": "#494d64", "surface0": "#363a4f", "base": "#24273a", "mantle": "#1e2030", "crust": "#181926"}},
+    "frappe": {"label": "Catppuccin Frappé", "hint": "escuro, mais claro e acinzentado", "colors": {
+      "rosewater": "#f2d5cf", "pink": "#f4b8e4", "mauve": "#ca9ee6", "red": "#e78284", "peach": "#ef9f76",
+      "yellow": "#e5c890", "green": "#a6d189", "teal": "#81c8be", "sky": "#99d1db", "sapphire": "#85c1dc",
+      "blue": "#8caaee", "lavender": "#babbf1", "text": "#c6d0f5", "subtext0": "#a5adce", "overlay1": "#838ba7",
+      "surface2": "#626880", "surface1": "#51576d", "surface0": "#414559", "base": "#303446", "mantle": "#292c3c", "crust": "#232634"}},
+    "mocha": {"label": "Catppuccin Mocha", "hint": "escuro, o mais profundo", "colors": {
+      "rosewater": "#f5e0dc", "pink": "#f5c2e7", "mauve": "#cba6f7", "red": "#f38ba8", "peach": "#fab387",
+      "yellow": "#f9e2af", "green": "#a6e3a1", "teal": "#94e2d5", "sky": "#89dceb", "sapphire": "#74c7ec",
+      "blue": "#89b4fa", "lavender": "#b4befe", "text": "#cdd6f4", "subtext0": "#a6adc8", "overlay1": "#7f849c",
+      "surface2": "#585b70", "surface1": "#45475a", "surface0": "#313244", "base": "#1e1e2e", "mantle": "#181825", "crust": "#11111b"}}
+  },
+  "accents": {
+    "blue": "Azul", "sapphire": "Safira", "sky": "Céu", "teal": "Verde-água", "green": "Verde", "yellow": "Amarelo",
+    "peach": "Pêssego", "red": "Vermelho", "pink": "Rosa", "mauve": "Malva", "lavender": "Lavanda", "rosewater": "Rosé"
+  },
+  "default": {"palette": "macchiato", "accent": "blue", "follow_system_accent": false},
+  "geometry": {"radius": {"control": 8, "card": 12, "popup": 16, "pill": 100}, "menu_width": 340}
+}

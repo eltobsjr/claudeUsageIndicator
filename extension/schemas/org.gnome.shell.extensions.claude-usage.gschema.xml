@@ -1,13 +1,5 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <schemalist>
-  <enum id="org.gnome.shell.extensions.claude-usage.color-theme">
-    <value nick="auto" value="0"/>
-    <value nick="sistema" value="1"/>
-    <value nick="catppuccin" value="2"/>
-    <value nick="verde" value="3"/>
-    <value nick="laranja" value="4"/>
-  </enum>
-
   <enum id="org.gnome.shell.extensions.claude-usage.label-format">
     <value nick="full"     value="0"/>
     <value nick="pct-only" value="1"/>
@@ -33,11 +25,6 @@
     <key name="show-icon" type="b">
       <default>true</default>
       <summary>Mostrar o ícone na barra</summary>
-    </key>
-
-    <key name="color-theme" enum="org.gnome.shell.extensions.claude-usage.color-theme">
-      <default>'auto'</default>
-      <summary>Tema de cores do popup</summary>
     </key>
 
     <key name="label-format" enum="org.gnome.shell.extensions.claude-usage.label-format">

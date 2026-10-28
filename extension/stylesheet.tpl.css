@@ -1,0 +1,31 @@
+.cu-panel { spacing: 4px; }
+.cu-panel-label { font-feature-settings: "tnum"; font-weight: 700; font-size: 0.95em; margin-left: 2px; }
+.cu-panel-label.cu-warn { color: {{warn}}; }
+.cu-panel-label.cu-crit { color: {{crit}}; }
+
+.cu-head { padding: 10px 14px 4px; }
+.cu-head-title { font-weight: 800; font-size: 1.1em; }
+.cu-head-plan {
+    font-size: 0.7em; font-weight: 700; padding: 2px 9px; border-radius: {{radius.pill}}px;
+    margin-right: 8px; color: {{accent_ink}}; background-color: {{accent}};
+}
+.cu-head-time { font-size: 0.82em; color: {{subtext0}}; font-feature-settings: "tnum"; }
+
+.cu-metric { padding: 8px 14px 6px; }
+.cu-metric-label { font-weight: 700; font-size: 0.92em; color: {{lavender}}; }
+.cu-metric-pct { font-size: 1.5em; font-weight: 800; font-feature-settings: "tnum"; }
+.cu-metric-pct.cu-warn { color: {{warn}}; }
+.cu-metric-pct.cu-crit { color: {{crit}}; }
+.cu-metric-reset { font-size: 0.78em; color: {{overlay1}}; font-feature-settings: "tnum"; margin-top: 2px; }
+
+.cu-status { padding: 2px 14px 6px; }
+.cu-status-label { font-size: 0.88em; color: {{warn}}; }
+
+.cu-bar-track { height: 8px; border-radius: {{radius.pill}}px; background-color: rgba({{overlay1.rgb}}, 0.22); margin: 6px 0 3px; }
+.cu-bar-fill {
+    height: 8px; border-radius: {{radius.pill}}px; background-color: {{accent}};
+    min-width: 0; transition-duration: 250ms; transition-property: width;
+}
+/* estados vêm depois: mesma especificidade, ganham pela ordem */
+.cu-bar-fill.cu-warn { background-color: {{warn}}; }
+.cu-bar-fill.cu-crit { background-color: {{crit}}; }

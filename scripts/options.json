@@ -1,0 +1,6 @@
+{"title":"Claude Usage Indicator","schema":"org.gnome.shell.extensions.claude-usage","settings":[
+ {"section":"Barra superior","key":"panel-position","type":"enum","label":"Posição do indicador","choices":[["right","Direita (padrão)"],["right-edge","Extrema direita"],["left","Esquerda"],["left-edge","Extrema esquerda"]]},
+ {"key":"label-format","type":"enum","label":"Formato do texto na barra","choices":[["full","Completo: S 62% 1h52m · W 35% 5d"],["pct-only","Só porcentagem: S 62% · W 35%"],["spark","Mini barras: ▓▓▓░░ 62%"]]},
+ {"key":"show-icon","type":"bool","label":"Mostrar o ícone"},
+ {"section":"Atualização","key":"refresh-interval","type":"int","label":"Atualizar a cada","choices":[[30,"30 s (padrão)"],[60,"1 min"],[120,"2 min"],[300,"5 min"]]}
+]}
