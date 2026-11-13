@@ -1,51 +1,70 @@
 # Claude Usage Indicator
 
-Uma extensão do **GNOME Shell** que mostra o uso do **Claude Code** em tempo
-real na barra superior: porcentagem da janela de sessão de 5h e do limite
-semanal, com countdown até o reset. Ao clicar, abre um painel com os detalhes.
+Extensão do **GNOME Shell** que mostra o uso do **Claude Code** na barra superior:
+quanto **resta** da sessão de 5 h e da semana, em quanto tempo reseta, se o ritmo
+vai estourar a cota e **onde foi o consumo** (por modelo e por agente do OpenBot).
 
-> **Mesma fonte que o `/usage` do Claude Code.** Lê os percentuais de uso direto
-> do claude.ai (`GET /api/oauth/usage`) usando o token OAuth que o Claude Code já
-> guarda em `~/.claude/.credentials.json`. Esse endpoint só devolve estatísticas
-> de uso — **não consome tokens**.
+![Popup](docs/popup.png)
+
+> **Mesma fonte que o `/usage` do Claude Code.** Lê os percentuais direto do
+> claude.ai (`GET /api/oauth/usage`) com o token OAuth que o Claude Code já guarda
+> em `~/.claude/.credentials.json`. Esse endpoint só devolve estatísticas — **não
+> consome tokens**.
 
 ---
 
-## Formatos do label na barra superior
+## Novidades da 3.0
 
-Escolha o formato que prefere nas preferências da extensão:
+- **Anéis que esvaziam**: como no OpenBot, o anel mostra o que **resta** (verde → amarelo → vermelho). Dá para trocar para "usado" nas preferências.
+- **Ritmo**: compara o que você usou com o que seria esperado se o uso fosse uniforme. `▲` aparece quando o ritmo passa de 1,2× **e** a projeção esgota a cota antes do reset (é uma estimativa linear).
+- **Consumo por modelo** (Sonnet, Haiku, Opus) em gráfico **acumulado** ou lista, com a parte do Claude Code e a do OpenBot.
+- **Agentes do OpenBot** em lista ou rosca.
+- **Cores por estado dentro do card** (nunca a cor de destaque): atenção com ≤ 30% restante, crítico com ≤ 10% (configurável).
+- **Contagem de tokens sem duplicatas**: o Claude Code grava a mesma mensagem em várias linhas; cada `message.id` é contado **uma vez** (sem isso o consumo saía ~62% inflado).
+- Lógica pura em `logic.js` com testes em Node, backend com testes em Python, `make check` completo.
 
-| Formato | Preview |
+---
+
+## Barra superior
+
+Formato escolhido nas preferências:
+
+| Formato | Exemplo |
 |---|---|
-| **Completo** — percentual + countdown | ![topbar completo](docs/topbar-complete.png) |
-| **Compacto** — só percentual | ![topbar compacto](docs/topbar-compact.png) |
-| **Barras** — ícones de progresso | ![topbar barras](docs/topbar-bars.png) |
+| **Anéis** (padrão) — anel + valor + reset, `▲` quando o ritmo estoura | ![anéis](docs/topbar-rings.png) |
+| **Completo** — percentual + countdown | ![completo](docs/topbar-complete.png) |
+| **Compacto** — só percentual | ![compacto](docs/topbar-compact.png) |
+| **Barras** — ícones de progresso | ![barras](docs/topbar-bars.png) |
+
+No formato de anéis, `86% 4h38` é o restante da sessão e o tempo até o reset; `60% ▲ 4d21h` é a semana, com alerta de ritmo.
+Os dois anéis seguem a cor do pior estado.
+
+## O popup
+
+- **Sessão (5 h) e Semana**: anel, valor, reset e o ritmo (`1,3× o ritmo`).
+- **Consumo por modelo**: gráfico acumulado ao longo da janela (sessão ou semana) ou lista com Claude Code × OpenBot.
+- **Agentes** do OpenBot: os que mais consumiram, em lista ou rosca.
+
+![Lista e rosca](docs/popup-lista-rosca.png)
+
+> Os tokens contados são **saída + criação de cache + entrada não cacheada**. Isso mostra *onde* foi o uso; a cota do plano não é proporcional a tokens e o peso de cada modelo não é público. Modelos fora do Claude (ex.: GPT no OpenBot) ficam fora da conta.
 
 ---
 
 ## Preferências
 
-<table>
-<tr>
-<td><b>Exibição</b> — formato do label, posição na barra, ícone, intervalo</td>
-<td><b>Uso</b> — dados em tempo real via OAuth</td>
-<td><b>Sobre</b></td>
-</tr>
-<tr>
-<td><img src="docs/prefs-display.png" width="200"/></td>
-<td><img src="docs/prefs-usage.png" width="200"/></td>
-<td><img src="docs/prefs-about.png" width="200"/></td>
-</tr>
-</table>
+`gnome-extensions prefs claude-usage@eltobsjr.gmail.com` ou menu da extensão → Preferências.
 
----
+- **Exibição** — formato da barra, posição (seletor visual), ícone, intervalo de atualização, mostrar restante/usado, mostrar reset e ritmo.
+- **Consumo** — mostrar modelos e agentes, modo (gráfico/lista, lista/rosca) e janela (sessão/semana).
+- **Alertas** — limites de atenção e crítico (restante %), sempre com crítico < atenção.
+- **Sobre**.
+
+Chaves GSettings: `refresh-interval`, `show-icon`, `label-format`, `value-mode`, `show-reset`, `show-pace`, `models-visible`, `models-mode`, `models-window`, `agents-visible`, `agents-mode`, `warn-at`, `crit-at`, `panel-position`.
 
 ## Posição na barra
 
-O seletor de posição exibe uma mini barra interativa mostrando exatamente onde o
-indicador ficará antes de confirmar a escolha:
-
-![Seletor de posição](docs/prefs-display.png)
+O seletor de posição tem uma mini barra interativa que mostra onde o indicador ficará:
 
 | Opção | Resultado na barra |
 |---|---|
@@ -63,22 +82,6 @@ A posição é aplicada ao vivo ao mudar — sem precisar reiniciar a extensão.
 ## Visual
 
 O tema (paleta e cor de destaque) é escolhido no `./install.sh` e vale para as barras de progresso, rótulos e avisos. Veja [Tema e opções](#tema-e-opções-escolhidos-na-instalação).
-
----
-
-## Recursos
-
-- **Painel compacto** na barra superior com o percentual real de uso (S/W) —
-  sessão de 5h · semana — e countdown até o reset.
-- **Dados reais da Anthropic**: % de uso, severidade e horários de reset lidos
-  direto do claude.ai via OAuth, sem precisar configurar nada.
-- **Popup detalhado** com a sessão de 5h e o limite semanal (mais o limite
-  semanal de Opus, nos planos Max).
-- **Barras de progresso** que mudam de cor (verde → amarelo → vermelho)
-  seguindo a severidade reportada pela própria Anthropic.
-- **Plano detectado automaticamente** (Pro / Max) a partir das credenciais OAuth.
-- **Resiliente a rate-limit**: a chamada à API é cacheada e com back-off, então
-  o indicador nunca mostra valor inventado — só dado real ou "—".
 
 ---
 
@@ -108,6 +111,7 @@ recarregar as extensões. No **X11**, basta `Alt+F2` → `r` → Enter.
 make install   # copia e compila o schema
 make enable    # ativa a extensão
 make run       # roda o tracker e imprime o resumo no terminal
+make check     # sintaxe, schema, temas, contraste, testes Python e Node
 make pack      # gera o .zip para o extensions.gnome.org
 ```
 
@@ -126,23 +130,6 @@ Para refazer as escolhas, rode `./install.sh --reconfigure`. Sem terminal (CI, `
 vale o que já estava salvo ou o padrão. Também aceita `--palette macchiato|frappe|mocha`, `--accent blue|mauve|…` e `--system-accent`.
 Detalhes do padrão visual em [`docs/DESIGN.md`](docs/DESIGN.md).
 
-## Configuração
-
-Abra as preferências em:
-
-```bash
-gnome-extensions prefs claude-usage@eltobsjr.gmail.com
-```
-
-Ou pelo menu da extensão → **Preferências**.
-
-- **Exibição** — formato do label, mostrar/ocultar ícone, intervalo de
-  atualização. A posição na barra usa um seletor visual com preview interativo da mini barra.
-- **Uso** — informativo: os dados de plano e % de uso vêm automaticamente das
-  credenciais OAuth do Claude Code, sem configuração manual.
-
----
-
 ## Como funciona
 
 A extensão dispara um pequeno script Python (`claude-usage-tracker.py`) que:
@@ -153,9 +140,10 @@ A extensão dispara um pequeno script Python (`claude-usage-tracker.py`) que:
    tokens),
 3. **Cacheia** a resposta e respeita o `retry-after` do rate-limit, servindo o
    último valor bom (marcado como desatualizado) em caso de falha,
-4. Grava um resumo em `~/.local/share/claude-usage/usage.json`.
+4. Calcula o **consumo** (`consumption.py`): lê de forma incremental os registros do Claude Code (`~/.claude/projects/**/*.jsonl`, com cache por arquivo e deduplicação por `message.id`) e, **só para leitura**, a tabela de uso do OpenBot,
+5. Grava tudo em `~/.local/share/claude-usage/usage.json`.
 
-A extensão lê esse JSON e desenha a interface. O intervalo de atualização da UI
+A extensão lê esse JSON e desenha a interface; a lógica de decisão (nível, ritmo, textos) fica em `logic.js`. O intervalo de atualização da UI
 é independente da chamada HTTP real — você pode atualizar a tela com frequência
 sem martelar a API.
 
@@ -164,6 +152,7 @@ Você também pode usar o tracker sozinho, sem a extensão:
 ```bash
 python3 extension/claude-usage-tracker.py --print
 python3 extension/claude-usage-tracker.py --watch 30   # loop a cada 30s
+CLAUDE_USAGE_DEMO=1 python3 extension/claude-usage-tracker.py --print   # dados fictícios (para prints)
 ```
 
 ---
@@ -173,14 +162,19 @@ python3 extension/claude-usage-tracker.py --watch 30   # loop a cada 30s
 ```
 claude-usage-indicator/
 ├── extension/
-│   ├── extension.js                 # UI do painel + popup
+│   ├── extension.js                 # interface: barra, popup, anéis, gráficos
+│   ├── logic.js                     # lógica pura (nível, ritmo, textos, séries)
 │   ├── prefs.js                     # preferências (libadwaita)
+│   ├── consumption.py               # consumo por modelo/agente (incremental)
+│   ├── claude-usage-tracker.py      # consulta OAuth + cache/back-off + resumo
+│   ├── stylesheet.tpl.css           # modelo do estilo (tokens da paleta)
 │   ├── metadata.json
-│   ├── stylesheet.css               # estilo adaptável ao tema
-│   ├── claude-usage-tracker.py      # consulta OAuth + cache/back-off
 │   ├── icons/claude-symbolic.svg
 │   └── schemas/*.gschema.xml
-├── docs/                            # screenshots
+├── tests/
+│   ├── logic.test.mjs               # node --test
+│   └── test_consumption.py          # pytest
+├── docs/                            # screenshots e DESIGN.md
 ├── install.sh
 ├── Makefile
 ├── LICENSE
@@ -191,6 +185,7 @@ claude-usage-indicator/
 
 ## Notas
 
+- O consumo por modelo/agente é estimativa local (tokens), não a cota oficial.
 - A **% de uso** da sessão e da semana vem diretamente da Anthropic via OAuth —
   é o mesmo número que o comando `/usage` do Claude Code mostra.
 - O endpoint `/api/oauth/usage` é interno do Claude Code e **não é documentado**;

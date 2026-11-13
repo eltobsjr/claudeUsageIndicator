@@ -1,3 +1,6 @@
+// Claude Usage Indicator — família Indicator (DESIGN.md).
+// Anéis que ESVAZIAM (como o OpenBot), cards que acompanham o estado, ritmo, consumo por modelo (gráfico acumulado ou
+// lista) e agentes do OpenBot. Tudo que muda a exibição é configurado nas Preferências.
 import GObject from 'gi://GObject';
 import St from 'gi://St';
 import Gio from 'gi://Gio';
@@ -9,141 +12,184 @@ import * as PanelMenu from 'resource:///org/gnome/shell/ui/panelMenu.js';
 import * as PopupMenu from 'resource:///org/gnome/shell/ui/popupMenu.js';
 import * as Main from 'resource:///org/gnome/shell/ui/main.js';
 
-const DATA_DIR  = GLib.build_filenamev([GLib.get_user_data_dir(), 'claude-usage']);
+import * as L from './logic.js';
+
+const DATA_DIR = GLib.build_filenamev([GLib.get_user_data_dir(), 'claude-usage']);
 const USAGE_FILE = GLib.build_filenamev([DATA_DIR, 'usage.json']);
 
 // ---------------------------------------------------------------------------
-// Helpers
+// Desenho (Cairo). As cores vêm do tema por propriedades -cu-* (nunca hex no JS).
 // ---------------------------------------------------------------------------
-function fmtCountdown(isoStr) {
-    if (!isoStr) return '';
-    const diff = Math.floor((new Date(isoStr) - Date.now()) / 1000);
-    if (diff <= 0) return 'agora';
-    const d = Math.floor(diff / 86400);
-    const h = Math.floor((diff % 86400) / 3600);
-    const m = Math.floor((diff % 3600) / 60);
-    if (d > 0) return `${d}d${h}h`;
-    if (h > 0) return `${h}h${m}m`;
-    return `${m}m`;
+function setColor(cr, c, alpha = 1) {
+    cr.setSourceRGBA(c.red / 255, c.green / 255, c.blue / 255, (c.alpha / 255) * alpha);
 }
 
-// Nível de alerta de uma janela. Usa a `severity` oficial da API quando houver;
-// senão cai para limiares de porcentagem.
-function levelFor(w) {
-    const s = (w?.severity || '').toLowerCase();
-    if (s && s !== 'normal') return s === 'warning' ? 'warn' : 'crit';
-    const p = w?.pct;
-    if (p == null) return 'ok';
-    if (p >= 90) return 'crit';
-    if (p >= 70) return 'warn';
-    return 'ok';
-}
-
-// ---------------------------------------------------------------------------
-// Barra de progresso
-// ---------------------------------------------------------------------------
-const ProgressBar = GObject.registerClass(
-class ProgressBar extends St.BoxLayout {
-    _init() {
-        super._init({ style_class: 'cu-bar-track', x_expand: true,
-                      y_align: Clutter.ActorAlign.CENTER });
-        this._fill = new St.Widget({ style_class: 'cu-bar-fill' });
-        this.add_child(this._fill);
-        this._pct = 0;
-        this._lastW = 0;   // última largura alocada conhecida
-        // notify::allocation é mais confiável que notify::width no Wayland
-        this.connect('notify::allocation', () => this._relayout());
-        this.connect('notify::mapped', () => this._relayout());
-    }
-
-    setFraction(frac, level) {
-        this._pct = Math.max(0, Math.min(1, frac || 0));
-        ['cu-warn', 'cu-crit'].forEach(c =>
-            this._fill.remove_style_class_name(c));
-        if (level === 'crit')      this._fill.add_style_class_name('cu-crit');
-        else if (level === 'warn') this._fill.add_style_class_name('cu-warn');
-        // notify::allocation só dispara quando a largura muda; com a mesma largura e um valor
-        // novo o preenchimento ficava no número antigo
-        this._relayout();
-        this.queue_relayout();
-    }
-
-    _relayout() {
-        // Só vale a largura ALOCADA: com o menu fechado `this.width` devolve a largura
-        // preferida da trilha, que é a do próprio preenchimento (realimentação: a barra
-        // encolhia a cada atualização).
-        const box = this.get_allocation_box();
-        const alloc = this.mapped ? box.get_width() : 0;
-        if (Number.isFinite(alloc) && alloc > 0) this._lastW = alloc;
-        if (this._lastW > 0) this._fill.width = Math.max(0, Math.round(this._lastW * this._pct));
-    }
-});
-
-// ---------------------------------------------------------------------------
-// Seção de métrica (sessão / hoje / semana)
-// ---------------------------------------------------------------------------
-const MetricRow = GObject.registerClass(
-class MetricRow extends PopupMenu.PopupBaseMenuItem {
-    _init(label) {
-        super._init({ reactive: false, can_focus: false, style_class: 'cu-metric' });
-
-        const box = new St.BoxLayout({ vertical: true, x_expand: true });
-
-        // linha topo: rótulo (esq) + porcentagem em destaque (dir)
-        const top = new St.BoxLayout({ x_expand: true });
-        this._label = new St.Label({
-            text: label, style_class: 'cu-metric-label', x_expand: true,
-            y_align: Clutter.ActorAlign.END,
-        });
-        this._pct = new St.Label({
-            text: '', style_class: 'cu-metric-pct',
-            y_align: Clutter.ActorAlign.END,
-        });
-        top.add_child(this._label);
-        top.add_child(this._pct);
-        box.add_child(top);
-
-        // barra de progresso (sempre visível)
-        this._bar = new ProgressBar();
-        box.add_child(this._bar);
-
-        // rodapé: countdown até o reset (secundário)
-        this._reset = new St.Label({
-            text: '', style_class: 'cu-metric-reset',
-            x_align: Clutter.ActorAlign.END, x_expand: true,
-        });
-        box.add_child(this._reset);
-
-        this.add_child(box);
-    }
-
-    // window = { pct, reset_at, severity }  — sempre vindo da API de uso.
-    update(window) {
-        const w = window || {};
-        this._pct.remove_style_class_name('cu-warn');
-        this._pct.remove_style_class_name('cu-crit');
-
-        // Sem dado real: não inventamos número.
-        if (w.pct == null) {
-            this._pct.text = '—';
-            this._reset.text = '';
-            this._bar.setFraction(0, 'ok');
-            return;
+/** Anel que esvazia: `frac` (0..1) do círculo colorido a partir do topo, e um traço opcional "onde deveria estar". */
+function makeRing(cls) {
+    const area = new St.DrawingArea({style_class: `cu-ring ${cls}`, x_expand: true, y_expand: true});
+    area.cu = {frac: 0, tick: null, empty: false};
+    area.connect('repaint', a => {
+        const cr = a.get_context();
+        const [w, h] = a.get_surface_size();
+        const node = a.get_theme_node();
+        const lw = Math.max(2, Math.min(w, h) * 0.13);
+        const r = Math.min(w, h) / 2 - lw / 2 - 1;
+        const cx = w / 2, cy = h / 2;
+        cr.setLineWidth(lw);
+        setColor(cr, node.get_color('-cu-track'));
+        cr.arc(cx, cy, r, 0, 2 * Math.PI);
+        cr.stroke();
+        if (!a.cu.empty && a.cu.frac > 0) {
+            setColor(cr, node.get_color('-cu-arc'));
+            cr.arc(cx, cy, r, -Math.PI / 2, -Math.PI / 2 + 2 * Math.PI * Math.min(1, a.cu.frac));
+            cr.stroke();
         }
+        if (a.cu.tick !== null && w > 40) {
+            const ang = -Math.PI / 2 + 2 * Math.PI * a.cu.tick;
+            setColor(cr, node.get_color('-cu-tick'));
+            cr.setLineWidth(2);
+            cr.moveTo(cx + (r - lw / 2 - 1) * Math.cos(ang), cy + (r - lw / 2 - 1) * Math.sin(ang));
+            cr.lineTo(cx + (r + lw / 2 + 1) * Math.cos(ang), cy + (r + lw / 2 + 1) * Math.sin(ang));
+            cr.stroke();
+        }
+        cr.$dispose();
+    });
+    return area;
+}
 
-        this._pct.text = `${Math.round(w.pct)}%`;
-        const cd = fmtCountdown(w.reset_at);
-        this._reset.text = cd ? `reseta em ${cd}` : '';
+/** Gráfico de linhas do consumo acumulado por modelo + total (tracejado). */
+function makeCumChart(slots, kind) {
+    const area = new St.DrawingArea({style_class: 'cu-chart', x_expand: true});
+    const cum = L.cumulative(slots);
+    area.connect('repaint', a => {
+        const cr = a.get_context();
+        const [w, h] = a.get_surface_size();
+        const node = a.get_theme_node();
+        const pl = 30, pr = 8, pt = 8, pb = 16, n = slots.length;
+        const X = i => pl + (w - pl - pr) * (n > 1 ? i / (n - 1) : 0);
+        const mx = cum.max || 1;
+        const Y = v => pt + (h - pt - pb) * (1 - v / mx);
+        cr.setFontSize(9);
+        setColor(cr, node.get_color('-cu-grid'));
+        cr.setLineWidth(1);
+        cr.moveTo(pl, Y(0));
+        cr.lineTo(w - pr, Y(0));
+        cr.stroke();
+        setColor(cr, node.get_color('-cu-label'));
+        cr.moveTo(0, pt + 7);
+        cr.showText(L.fmtTokens(cum.max));
+        cr.moveTo(0, Y(0) + 3);
+        cr.showText('0');
+        slots.forEach((s, i) => {
+            const lab = kind === 'week' ? L.slotLabel(s, 'week').split(' ')[0] : (i % 2 === 0 ? L.slotLabel(s, 'session') : '');
+            if (!lab)
+                return;
+            cr.moveTo(X(i) - 8, h - 3);
+            cr.showText(lab);
+        });
+        const colors = {S: '-cu-s', H: '-cu-h', O: '-cu-o', T: '-cu-t'};
+        for (const k of ['T', 'S', 'H', 'O']) {
+            const pts = cum.series[k];
+            if (!pts.length || (k !== 'T' && pts[pts.length - 1][1] === 0))
+                continue;
+            setColor(cr, node.get_color(colors[k]));
+            cr.setLineWidth(k === 'T' ? 1.2 : 2);
+            cr.setDash(k === 'T' ? [3, 3] : [], 0);
+            pts.forEach(([i, v], j) => (j === 0 ? cr.moveTo(X(i), Y(v)) : cr.lineTo(X(i), Y(v))));
+            cr.stroke();
+            cr.setDash([], 0);
+            const [li, lv] = pts[pts.length - 1];
+            cr.arc(X(li), Y(lv), 2.6, 0, 2 * Math.PI);
+            cr.fill();
+        }
+        cr.$dispose();
+    });
+    return area;
+}
 
-        const level = levelFor(w);
-        if (level === 'crit')      this._pct.add_style_class_name('cu-crit');
-        else if (level === 'warn') this._pct.add_style_class_name('cu-warn');
-        this._bar.setFraction(w.pct / 100, level);
-    }
-});
+/** Barra de duas partes (Claude Code | OpenBot) ou de uma parte (agente). */
+function makeBar(parts, max, ob = 0, fixed = false) {
+    const area = new St.DrawingArea({style_class: fixed ? 'cu-mbar cu-mbar-fixed' : 'cu-mbar', x_expand: !fixed});
+    area.connect('repaint', a => {
+        const cr = a.get_context();
+        const [w, h] = a.get_surface_size();
+        const node = a.get_theme_node();
+        const r = h / 2;
+        const pill = (x, wd, color) => {
+            if (wd <= 0)
+                return;
+            setColor(cr, color);
+            cr.newSubPath();
+            cr.arc(x + r, r, r, Math.PI / 2, 3 * Math.PI / 2);
+            cr.arc(x + Math.max(wd, 2 * r) - r, r, r, -Math.PI / 2, Math.PI / 2);
+            cr.closePath();
+            cr.fill();
+        };
+        pill(0, w, node.get_color('-cu-track'));
+        const a1 = max ? (parts / max) * w : 0, a2 = max ? (ob / max) * w : 0;
+        pill(0, a1, node.get_color('-cu-cc'));
+        if (a2 > 0) {
+            cr.save();
+            cr.rectangle(a1, 0, a2, h);
+            cr.clip();
+            pill(a1 - r, a2 + r, node.get_color('-cu-ob'));
+            cr.restore();
+        }
+        cr.$dispose();
+    });
+    return area;
+}
+
+function makeDonut(items) {
+    const area = new St.DrawingArea({style_class: 'cu-donut'});
+    area.connect('repaint', a => {
+        const cr = a.get_context();
+        const [w, h] = a.get_surface_size();
+        const node = a.get_theme_node();
+        const total = items.reduce((s, i) => s + i.tokens, 0) || 1;
+        const cx = w / 2, cy = h / 2, R = Math.min(w, h) / 2 - 1;
+        let ang = -Math.PI / 2;
+        items.forEach((it, i) => {
+            const sweep = 2 * Math.PI * it.tokens / total;
+            setColor(cr, node.get_color(`-cu-a${Math.min(i, 5)}`));
+            cr.moveTo(cx, cy);
+            cr.arc(cx, cy, R, ang, ang + sweep);
+            cr.closePath();
+            cr.fill();
+            ang += sweep;
+        });
+        setColor(cr, node.get_color('-cu-hole'));
+        cr.arc(cx, cy, R * 0.66, 0, 2 * Math.PI);
+        cr.fill();
+        setColor(cr, node.get_color('-cu-label-strong'));
+        cr.setFontSize(10);
+        const txt = L.fmtTokens(total);
+        const ext = cr.textExtents(txt);
+        cr.moveTo(cx - ext.width / 2 - ext.xBearing, cy + 3);
+        cr.showText(txt);
+        cr.$dispose();
+    });
+    return area;
+}
+
+function label(text, cls, props = {}) {
+    const l = new St.Label({text, style_class: cls, y_align: Clutter.ActorAlign.CENTER, ...props});
+    return l;
+}
+
+/** Texto de dica: sempre com quebra de linha (nunca cortado com reticências). */
+function hint(text) {
+    const l = label(text, 'cu-hint');
+    l.clutter_text.set_line_wrap(true);
+    return l;
+}
+
+function dot(cls) {
+    return new St.Widget({style_class: `cu-dot ${cls}`, y_align: Clutter.ActorAlign.CENTER});
+}
 
 // ---------------------------------------------------------------------------
-// Indicator
+// Indicador
 // ---------------------------------------------------------------------------
 const ClaudeIndicator = GObject.registerClass(
 class ClaudeIndicator extends PanelMenu.Button {
@@ -154,98 +200,168 @@ class ClaudeIndicator extends PanelMenu.Button {
         this._data = null;
         this._destroyed = false;
         this._cancel = new Gio.Cancellable();
+        this._timer = 0;
+        this._cdTimer = 0;
 
-        // --- painel ---
-        const panelBox = new St.BoxLayout({ style_class: 'panel-status-menu-box cu-panel' });
-        this._panelIcon = new St.Icon({
-            gicon: Gio.icon_new_for_string(
-                GLib.build_filenamev([ext.path, 'icons', 'claude-symbolic.svg'])),
-            style_class: 'system-status-icon',
-        });
-        this._panelLabel = new St.Label({
-            text: '…', y_align: Clutter.ActorAlign.CENTER,
-            style_class: 'cu-panel-label',
-        });
-        panelBox.add_child(this._panelIcon);
-        panelBox.add_child(this._panelLabel);
-        this.add_child(panelBox);
-
+        this._buildPanel();
         this._buildMenu();
 
-        this._settings.connectObject(
-            'changed::refresh-interval',    () => this._restartTimer(),
-            'changed::show-icon',           () => this._applyShowIcon(),
-            'changed::label-format',        () => { if (this._data) this._render(); },
-            this);
-        this._applyShowIcon();
-        this._applyPlan();
+        const keys = ['refresh-interval', 'show-icon', 'label-format', 'value-mode', 'show-reset', 'show-pace',
+            'models-visible', 'models-mode', 'models-window', 'agents-visible', 'agents-mode', 'warn-at', 'crit-at'];
+        const args = [];
+        for (const k of keys) {
+            args.push(`changed::${k}`, k === 'refresh-interval' ? () => this._restartTimer() : () => this._render());
+        }
+        this._settings.connectObject(...args, this);
+
         this._tick();
         this._restartTimer();
     }
 
+    // ------------------------------------------------------------------ painel
+    _buildPanel() {
+        const box = new St.BoxLayout({style_class: 'panel-status-menu-box cu-panel'});
+        this._panelIcon = new St.Icon({
+            gicon: Gio.icon_new_for_string(GLib.build_filenamev([this._ext.path, 'icons', 'claude-symbolic.svg'])),
+            style_class: 'system-status-icon',
+        });
+        box.add_child(this._panelIcon);
+
+        // formato novo: anéis + valor + tempo
+        this._ringsBox = new St.BoxLayout({style_class: 'cu-bar-rings', y_align: Clutter.ActorAlign.CENTER});
+        this._barRings = [];
+        for (let i = 0; i < 2; i++) {
+            if (i === 1)
+                this._ringsBox.add_child(new St.Widget({style_class: 'cu-bar-sep', y_align: Clutter.ActorAlign.CENTER}));
+            const g = new St.BoxLayout({style_class: 'cu-bar-group', y_align: Clutter.ActorAlign.CENTER});
+            const ring = makeRing('cu-bar-ring');
+            ring.x_expand = false;
+            ring.y_expand = false;
+            ring.y_align = Clutter.ActorAlign.CENTER;
+            const val = label('—', 'cu-bar-val');
+            const tri = label('▲', 'cu-bar-tri');
+            const time = label('', 'cu-bar-time');
+            g.add_child(ring);
+            g.add_child(val);
+            g.add_child(tri);
+            g.add_child(time);
+            this._ringsBox.add_child(g);
+            this._barRings.push({ring, val, tri, time});
+        }
+        box.add_child(this._ringsBox);
+
+        // formatos antigos (completo, só porcentagem, barras)
+        this._panelLabel = label('…', 'cu-panel-label');
+        box.add_child(this._panelLabel);
+        this.add_child(box);
+    }
+
+    // ------------------------------------------------------------------ popup
     _buildMenu() {
+        const item = new PopupMenu.PopupBaseMenuItem({reactive: false, can_focus: false, style_class: 'cu-item'});
+        this._root = new St.BoxLayout({vertical: true, x_expand: true, style_class: 'cu-root'});
+        item.add_child(this._root);
+        this.menu.addMenuItem(item);
+
         // cabeçalho
-        const head = new PopupMenu.PopupBaseMenuItem({ reactive: false, can_focus: false,
-            style_class: 'cu-head' });
-        const hbox = new St.BoxLayout({ x_expand: true });
-        hbox.add_child(new St.Label({ text: 'Claude', style_class: 'cu-head-title',
-            x_expand: true, y_align: Clutter.ActorAlign.CENTER }));
-        this._planLabel = new St.Label({ text: '', style_class: 'cu-head-plan',
-            y_align: Clutter.ActorAlign.CENTER });
-        hbox.add_child(this._planLabel);
-        this._timeLabel = new St.Label({ text: '', style_class: 'cu-head-time',
-            y_align: Clutter.ActorAlign.CENTER });
-        hbox.add_child(this._timeLabel);
-        head.add_child(hbox);
-        this.menu.addMenuItem(head);
-        this.menu.addMenuItem(new PopupMenu.PopupSeparatorMenuItem());
+        const head = new St.BoxLayout({style_class: 'cu-head'});
+        const av = new St.Bin({style_class: 'cu-avatar', y_align: Clutter.ActorAlign.CENTER, child: new St.Icon({
+            gicon: Gio.icon_new_for_string(GLib.build_filenamev([this._ext.path, 'icons', 'claude-symbolic.svg'])),
+            style_class: 'cu-avatar-icon',
+        })});
+        const titles = new St.BoxLayout({vertical: true, x_expand: true, style_class: 'cu-titles'});
+        titles.add_child(label('Claude', 'cu-title'));
+        this._ago = label('', 'cu-sub');
+        titles.add_child(this._ago);
+        this._plan = label('', 'cu-pill');
+        head.add_child(av);
+        head.add_child(titles);
+        head.add_child(this._plan);
+        this._root.add_child(head);
 
-        // linha de status (login necessário / sessão expirada / indisponível)
-        this._statusRow = new PopupMenu.PopupBaseMenuItem({ reactive: false,
-            can_focus: false, style_class: 'cu-status' });
-        this._statusLabel = new St.Label({ text: '', style_class: 'cu-status-label',
-            x_expand: true });
-        this._statusRow.add_child(this._statusLabel);
-        this.menu.addMenuItem(this._statusRow);
-        this._statusRow.visible = false;
+        // estado (login/expirado/indisponível)
+        this._status = label('', 'cu-status');
+        this._status.clutter_text.set_line_wrap(true);
+        this._status.visible = false;
+        this._root.add_child(this._status);
 
-        // métricas (vindas da API de uso do claude.ai)
-        this._rowSession  = new MetricRow(_('Sessão (5h)'));
-        this._rowWeek     = new MetricRow(_('Semana'));
-        this._rowWeekOpus = new MetricRow(_('Semana · Opus'));
-        this.menu.addMenuItem(this._rowSession);
-        this.menu.addMenuItem(this._rowWeek);
-        this.menu.addMenuItem(this._rowWeekOpus);
-        this._rowWeekOpus.visible = false;  // só em planos Max com limite de Opus
-        this.menu.addMenuItem(new PopupMenu.PopupSeparatorMenuItem());
+        // anéis
+        const rings = new St.BoxLayout({style_class: 'cu-rings', x_expand: true});
+        this._cards = [this._makeCard(_('Sessão · 5 h')), this._makeCard(_('Semana'))];
+        for (const c of this._cards)
+            rings.add_child(c.box);
+        this._root.add_child(rings);
+        this._paceHint = label('', 'cu-hint');
+        this._paceHint.clutter_text.set_line_wrap(true);
+        this._root.add_child(this._paceHint);
 
-        // ações
-        const refresh = new PopupMenu.PopupImageMenuItem(_('Atualizar agora'), 'view-refresh-symbolic');
-        refresh.connect('activate', () => this._tick(true));
-        this.menu.addMenuItem(refresh);
+        // blocos dinâmicos
+        this._modelsBlock = this._makeSection(_('Consumo por modelo'));
+        this._agentsBlock = this._makeSection(_('Agentes do OpenBot'));
+        this._root.add_child(this._modelsBlock.box);
+        this._root.add_child(this._agentsBlock.box);
 
-        const prefs = new PopupMenu.PopupImageMenuItem(_('Preferências'), 'preferences-system-symbolic');
-        prefs.connect('activate', () => this._ext.openPreferences());
-        this.menu.addMenuItem(prefs);
+        // rodapé
+        const foot = new St.BoxLayout({style_class: 'cu-foot'});
+        for (const [text, fn] of [[_('Atualizar agora'), () => this._tick(true)],
+            [_('Preferências'), () => { this.menu.close(); this._ext.openPreferences(); }]]) {
+            const b = new St.Button({label: text, can_focus: true, x_expand: true, style_class: 'cu-btn'});
+            b.connect('clicked', fn);
+            foot.add_child(b);
+        }
+        this._root.add_child(foot);
     }
 
-    _applyShowIcon() {
-        this._panelIcon.visible = this._settings.get_boolean('show-icon');
+    _makeCard(title) {
+        const box = new St.BoxLayout({vertical: true, x_expand: true, style_class: 'cu-card cu-off'});
+        const t = label(title, 'cu-card-title', {x_align: Clutter.ActorAlign.CENTER});
+        const wrap = new St.Widget({style_class: 'cu-gauge', layout_manager: new Clutter.BinLayout(), x_align: Clutter.ActorAlign.CENTER});
+        const ring = makeRing('cu-gauge-ring');
+        const center = new St.BoxLayout({vertical: true, x_align: Clutter.ActorAlign.CENTER, y_align: Clutter.ActorAlign.CENTER});
+        const val = label('—', 'cu-gauge-val', {x_align: Clutter.ActorAlign.CENTER});
+        const cap = label('', 'cu-gauge-cap', {x_align: Clutter.ActorAlign.CENTER});
+        center.add_child(val);
+        center.add_child(cap);
+        wrap.add_child(ring);
+        wrap.add_child(center);
+        const reset = label('', 'cu-card-reset', {x_align: Clutter.ActorAlign.CENTER});
+        const chip = label('', 'cu-chip', {x_align: Clutter.ActorAlign.CENTER});
+        box.add_child(t);
+        box.add_child(wrap);
+        box.add_child(reset);
+        box.add_child(chip);
+        return {box, ring, val, cap, reset, chip};
     }
 
-    _applyPlan() {
-        // Plano vem do usage.json (lido da API do claude.ai); atualizado em _render()
+    _makeSection(title) {
+        const box = new St.BoxLayout({vertical: true, style_class: 'cu-section'});
+        const head = new St.BoxLayout({style_class: 'cu-section-head'});
+        head.add_child(label(title, 'cu-section-title', {x_expand: true}));
+        const note = label('', 'cu-section-note');
+        head.add_child(note);
+        const body = new St.BoxLayout({vertical: true, style_class: 'cu-section-body'});
+        box.add_child(head);
+        box.add_child(body);
+        return {box, note, body};
     }
 
+    // ------------------------------------------------------------------ dados
     _restartTimer() {
-        if (this._timer) { GLib.source_remove(this._timer); this._timer = null; }
+        if (this._timer) {
+            GLib.source_remove(this._timer);
+            this._timer = 0;
+        }
         const iv = Math.max(15, this._settings.get_int('refresh-interval'));
         this._timer = GLib.timeout_add_seconds(GLib.PRIORITY_DEFAULT, iv, () => {
-            this._tick(); return GLib.SOURCE_CONTINUE;
+            this._tick();
+            return GLib.SOURCE_CONTINUE;
         });
         if (!this._cdTimer) {
+            // só reescreve os textos de contagem (sem I/O)
             this._cdTimer = GLib.timeout_add_seconds(GLib.PRIORITY_DEFAULT, 30, () => {
-                if (this._data) this._render(); return GLib.SOURCE_CONTINUE;
+                if (this._data)
+                    this._render();
+                return GLib.SOURCE_CONTINUE;
             });
         }
     }
@@ -253,106 +369,251 @@ class ClaudeIndicator extends PanelMenu.Button {
     _tick(force = false) {
         const script = GLib.build_filenamev([this._ext.path, 'claude-usage-tracker.py']);
         const argv = ['python3', script];
-        if (force) argv.push('--force');
+        if (force)
+            argv.push('--force');
         try {
-            Gio.Subprocess.new(argv,
-                Gio.SubprocessFlags.STDOUT_SILENCE | Gio.SubprocessFlags.STDERR_SILENCE)
+            Gio.Subprocess.new(argv, Gio.SubprocessFlags.STDOUT_SILENCE | Gio.SubprocessFlags.STDERR_SILENCE)
                 .wait_async(this._cancel, () => {
-                    if (!this._destroyed) this._loadData();
+                    if (!this._destroyed)
+                        this._loadData();
                 });
-        } catch (_e) { this._loadData(); }
+        } catch (_e) {
+            this._loadData();
+        }
     }
 
     _loadData() {
-        if (this._destroyed) return;
-        const file = Gio.File.new_for_path(USAGE_FILE);
-        file.load_contents_async(this._cancel, (f, res) => {
-            if (this._destroyed) return;   // a extensão foi desativada enquanto lia o arquivo
+        if (this._destroyed)
+            return;
+        Gio.File.new_for_path(USAGE_FILE).load_contents_async(this._cancel, (f, res) => {
+            if (this._destroyed)
+                return;
             try {
                 const [ok, raw] = f.load_contents_finish(res);
                 if (ok) {
                     this._data = JSON.parse(new TextDecoder().decode(raw));
                     this._render();
                 }
-            } catch (_e) { if (!this._destroyed) this._panelLabel.text = '—'; }
+            } catch (_e) {
+                if (!this._destroyed)
+                    this._panelLabel.text = '—';
+            }
         });
     }
 
+    _cfg() {
+        const s = this._settings;
+        const fmt = s.get_string('label-format');
+        return {
+            valueMode: s.get_string('value-mode'),
+            format: fmt === 'pct-only' ? 'compact' : fmt,
+            showReset: s.get_boolean('show-reset'),
+            showPace: s.get_boolean('show-pace'),
+            warnAt: s.get_int('warn-at'),
+            critAt: s.get_int('crit-at'),
+            modelsVisible: s.get_boolean('models-visible'),
+            modelsMode: s.get_string('models-mode'),
+            modelsWindow: s.get_string('models-window'),
+            agentsVisible: s.get_boolean('agents-visible'),
+            agentsMode: s.get_string('agents-mode'),
+        };
+    }
+
+    // ------------------------------------------------------------------ desenho
     _render() {
         const d = this._data;
-        if (!d) return;
+        if (!d || this._destroyed)
+            return;
+        const cfg = this._cfg();
+        const nowMs = Date.now();
+        const session = d.session ?? {}, week = d.week ?? {};
 
-        const session = d.session || {};
-        const week    = d.week    || {};
+        this._panelIcon.visible = this._settings.get_boolean('show-icon');
+        this._plan.text = L.planLabel(d.plan).toUpperCase();
+        const gen = d.generated_at ? new Date(d.generated_at).getTime() : 0;
+        this._ago.text = (d.stale ? '⏳ ' : '') + L.agoLabel(gen, nowMs);
 
-        // plano real (da API). Cobre variações tipo "max_5x", "max_20x".
-        const planKey = (d.plan || 'unknown').toLowerCase();
-        let planTxt = '';
-        if (planKey.startsWith('max'))      planTxt = 'Max';
-        else if (planKey.startsWith('pro')) planTxt = 'Pro';
-        else if (planKey === 'free')        planTxt = 'Free';
-        else if (planKey.includes('api'))   planTxt = 'API';
-        else if (planKey !== 'unknown')     planTxt = d.plan;
-        else                                planTxt = '?';
-        this._planLabel.text = planTxt;
-
-        // marca dados servidos do cache (API indisponível no momento)
-        this._timeLabel.text = (d.stale ? '⏳ ' : '') +
-            new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-
-        // --- linha de status (estado vazio / problema) ---
         let status = '';
-        if (!d.has_credentials)   status = _('Faça login no Claude Code para ver o uso.');
-        else if (d.token_expired) status = _('Sessão expirada — reabra o Claude Code.');
-        else if (!d.api_source)   status = _('Uso indisponível no momento.');
-        this._statusRow.visible = status !== '';
-        this._statusLabel.text = status;
+        if (!d.has_credentials)
+            status = _('Faça login no Claude Code para ver o uso.');
+        else if (d.token_expired)
+            status = _('Sessão expirada — reabra o Claude Code.');
+        else if (!d.api_source)
+            status = _('Uso indisponível no momento.');
+        this._status.visible = status !== '';
+        this._status.text = status;
 
-        // --- painel ---
-        const fmt = this._settings.get_string('label-format');
+        const levels = [L.level(session.pct, cfg.warnAt, cfg.critAt, session.severity),
+            L.level(week.pct, cfg.warnAt, cfg.critAt, week.severity)];
 
-        function sparkBar(pct, len = 5) {
-            const frac = Math.max(0, Math.min(1, (pct ?? 0) / 100));
-            const filled = Math.round(frac * len);
-            return '▓'.repeat(filled) + '░'.repeat(len - filled);
-        }
+        this._renderBar(cfg, session, week, nowMs, levels);
+        this._renderCards(cfg, [session, week], [L.SESSION_SEC, L.WEEK_SEC], nowMs, levels);
+        this._renderModels(cfg, d.consumption);
+        this._renderAgents(cfg, d.consumption);
+    }
 
-        function panelBit(prefix, w) {
-            // sem dado real: mostra travessão, nunca um número inventado
-            if (w.pct == null) return `${prefix} —`;
-            const val = `${Math.round(w.pct)}%`;
-            if (fmt === 'spark')    return `${sparkBar(w.pct)} ${val}`;
-            if (fmt === 'pct-only') return `${prefix} ${val}`;
-            const cd = w.reset_at ? ` ${fmtCountdown(w.reset_at)}` : '';
-            return `${prefix} ${val}${cd}`;
-        }
-        this._panelLabel.text =
-            `${panelBit('S', session)} · ${panelBit('W', week)}`;
-
-        const levels = [levelFor(session), levelFor(week)];
-        this._panelLabel.remove_style_class_name('cu-warn');
-        this._panelLabel.remove_style_class_name('cu-crit');
-        if (levels.includes('crit')) this._panelLabel.add_style_class_name('cu-crit');
-        else if (levels.includes('warn')) this._panelLabel.add_style_class_name('cu-warn');
-
-        this._rowSession.update(session);
-        this._rowWeek.update(week);
-
-        // limite semanal de Opus (só planos Max o expõem)
-        const opus = d.week_opus;
-        if (opus && opus.pct != null) {
-            this._rowWeekOpus.visible = true;
-            this._rowWeekOpus.update(opus);
+    _renderBar(cfg, session, week, nowMs, levels) {
+        const rings = cfg.format === 'rings';
+        this._ringsBox.visible = rings;
+        this._panelLabel.visible = !rings;
+        if (rings) {
+            const info = L.barRings({session, week, cfg, nowMs});
+            info.forEach((r, i) => {
+                const w = this._barRings[i];
+                if (r.empty) {
+                    w.val.text = '—';
+                    w.tri.visible = false;
+                    w.time.text = '';
+                    w.ring.cu.empty = true;
+                    w.ring.style_class = 'cu-ring cu-bar-ring cu-off';
+                } else {
+                    w.val.text = `${r.value}%`;
+                    w.val.style_class = `cu-bar-val cu-${r.level}`;
+                    w.tri.visible = r.alert;
+                    w.time.text = r.reset;
+                    w.time.visible = r.reset !== '';
+                    w.ring.cu.empty = false;
+                    w.ring.cu.frac = r.ringFrac;
+                    w.ring.style_class = `cu-ring cu-bar-ring cu-${r.level}`;
+                }
+                w.ring.queue_repaint();
+            });
         } else {
-            this._rowWeekOpus.visible = false;
+            this._panelLabel.text = L.legacyBar({session, week, cfg, nowMs});
+            this._panelLabel.style_class = `cu-panel-label cu-${L.worstLevel(levels)}`;
         }
+    }
+
+    _renderCards(cfg, wins, windowSecs, nowMs, levels) {
+        wins.forEach((w, i) => {
+            const c = this._cards[i];
+            if (w.pct === null || w.pct === undefined) {
+                c.box.style_class = 'cu-card cu-off';
+                c.val.text = '—';
+                c.cap.text = '';
+                c.reset.text = '';
+                c.chip.text = '';
+                c.ring.cu.empty = true;
+                c.ring.cu.tick = null;
+                c.ring.queue_repaint();
+                return;
+            }
+            const used = cfg.valueMode === 'used';
+            const resetMs = w.reset_at ? new Date(w.reset_at).getTime() : 0;
+            const p = L.pace({usedPct: w.pct, resetAtMs: resetMs, windowSec: windowSecs[i], nowMs});
+            c.box.style_class = `cu-card cu-${levels[i]}`;
+            c.val.text = `${L.shown(w.pct, cfg.valueMode)}%`;
+            c.cap.text = used ? _('USADO') : _('RESTAM');
+            c.reset.text = resetMs ? _('reinicia em %s').format(L.countdown((resetMs - nowMs) / 1000)) : '';
+            c.chip.text = cfg.showPace && L.paceAlert(p) ? L.paceText(p) : '';
+            c.chip.visible = c.chip.text !== '';
+            c.ring.cu.empty = false;
+            c.ring.cu.frac = used ? w.pct / 100 : (100 - w.pct) / 100;
+            c.ring.cu.tick = p ? (used ? p.expectedUsed : 100 - p.expectedUsed) / 100 : null;
+            c.ring.queue_repaint();
+        });
+        const hints = [];
+        wins.forEach((w, i) => {
+            const p = w.pct == null ? null : L.pace({usedPct: w.pct, resetAtMs: w.reset_at ? new Date(w.reset_at).getTime() : 0,
+                windowSec: windowSecs[i], nowMs});
+            if (cfg.showPace && L.paceAlert(p) && p.emptyInSec)
+                hints.push(`${i === 0 ? _('Sessão') : _('Semana')}: ${_('acaba em ≈ %s').format(L.countdown(p.emptyInSec))}`);
+        });
+        this._paceHint.text = hints.length
+            ? `${_('Traço branco = onde deveria estar.')} ${hints.join(' · ')} (${_('estimativa')})`
+            : _('Traço branco = onde deveria estar.');
+    }
+
+    _renderModels(cfg, cons) {
+        const sec = this._modelsBlock;
+        sec.box.visible = cfg.modelsVisible;
+        if (!cfg.modelsVisible)
+            return;
+        sec.body.destroy_all_children();
+        const win = cfg.modelsWindow === 'session' ? 'session' : 'week';
+        sec.note.text = win === 'week' ? _('semana') : _('sessão');
+        if (!cons?.[win]) {
+            sec.body.add_child(hint(_('Sem dados de consumo ainda.')));
+            return;
+        }
+        if (cfg.modelsMode === 'list') {
+            const mr = L.modelRows(cons.models?.[win]);
+            for (const r of mr.rows) {
+                const row = new St.BoxLayout({style_class: 'cu-row'});
+                row.add_child(label(r.name, 'cu-row-name'));
+                const bar = makeBar(r.cc, mr.max, r.ob);
+                row.add_child(bar);
+                row.add_child(label(L.fmtTokens(r.total), 'cu-row-val'));
+                sec.body.add_child(row);
+            }
+            const legend = new St.BoxLayout({style_class: 'cu-legend'});
+            for (const [cls, text] of [['cu-dot-cc', 'Claude Code'], ['cu-dot-ob', 'OpenBot']]) {
+                legend.add_child(dot(cls));
+                legend.add_child(label(text, 'cu-legend-text'));
+            }
+            sec.body.add_child(legend);
+            sec.body.add_child(hint(`Claude Code ${Math.round(mr.ccShare * 100)}% · OpenBot ${Math.round(mr.obShare * 100)}%`));
+        } else {
+            sec.body.add_child(makeCumChart(cons[win].slots, win));
+            const legend = new St.BoxLayout({style_class: 'cu-legend'});
+            for (const [cls, text] of [['cu-dot-s', 'Sonnet'], ['cu-dot-h', 'Haiku'], ['cu-dot-o', 'Opus'], ['cu-dot-t', _('total')]]) {
+                legend.add_child(dot(cls));
+                legend.add_child(label(text, 'cu-legend-text'));
+            }
+            sec.body.add_child(legend);
+            sec.body.add_child(hint(_('Soma acumulada desde o início da janela, até agora.')));
+        }
+        const ex = Object.entries(cons.excluded ?? {});
+        if (ex.length)
+            sec.body.add_child(hint(_('%s fica fora da cota do Claude (não entra no gráfico).').format(ex.map(([m]) => m).join(', '))));
+        sec.body.add_child(hint(_('Tokens novos (sem leitura de cache). Mostra onde foi o uso, não a % exata da cota.')));
+    }
+
+    _renderAgents(cfg, cons) {
+        const sec = this._agentsBlock;
+        const agents = cons?.agents ?? [];
+        sec.box.visible = cfg.agentsVisible && agents.length > 0;
+        if (!sec.box.visible)
+            return;
+        sec.body.destroy_all_children();
+        sec.note.text = _('tokens novos');
+        const v = L.agentsView(agents, 4);
+        if (cfg.agentsMode === 'donut') {
+            const row = new St.BoxLayout({style_class: 'cu-donut-row'});
+            row.add_child(makeDonut(v.donut));
+            const legend = new St.BoxLayout({vertical: true, x_expand: true, style_class: 'cu-donut-legend'});
+            v.donut.forEach((a, i) => {
+                const li = new St.BoxLayout({style_class: 'cu-row'});
+                li.add_child(dot(`cu-dot-a${Math.min(i, 5)}`));
+                li.add_child(label(a.name, 'cu-row-name cu-ellipsis', {x_expand: true}));
+                li.add_child(label(`${Math.round(a.tokens / (v.total || 1) * 100)}%`, 'cu-row-val'));
+                legend.add_child(li);
+            });
+            row.add_child(legend);
+            sec.body.add_child(row);
+        } else {
+            for (const a of v.top) {
+                const row = new St.BoxLayout({style_class: 'cu-row'});
+                row.add_child(label(a.name, 'cu-row-name cu-ellipsis', {x_expand: true}));
+                row.add_child(makeBar(a.tokens, v.max, 0, true));
+                row.add_child(label(`${L.fmtTokens(a.tokens)} · ${a.turns} t`, 'cu-row-val cu-row-val-wide'));
+                sec.body.add_child(row);
+            }
+        }
+        sec.body.add_child(hint(_('Desde o início da semana. O Claude Code está no bloco por modelo.')));
     }
 
     destroy() {
         this._destroyed = true;
         this._cancel.cancel();
-        if (this._timer)  { GLib.source_remove(this._timer);  this._timer  = null; }
-        if (this._cdTimer){ GLib.source_remove(this._cdTimer); this._cdTimer = null; }
+        if (this._timer) {
+            GLib.source_remove(this._timer);
+            this._timer = 0;
+        }
+        if (this._cdTimer) {
+            GLib.source_remove(this._cdTimer);
+            this._cdTimer = 0;
+        }
         this._settings.disconnectObject(this);
         super.destroy();
     }
@@ -361,24 +622,21 @@ class ClaudeIndicator extends PanelMenu.Button {
 export default class ClaudeUsageExtension extends Extension {
     enable() {
         this._settings = this.getSettings();
-        this._posHandler = this._settings.connect('changed::panel-position',
-            () => this._reposition());
+        this._posHandler = this._settings.connect('changed::panel-position', () => this._reposition());
         this._create();
     }
 
     _create() {
         this._indicator = new ClaudeIndicator(this);
-        const pos = this._settings.get_string('panel-position');
-        switch (pos) {
-            case 'left':
-                Main.panel.addToStatusArea(this.uuid, this._indicator, -1, 'left');
-                break;
-            case 'left-edge':
-                Main.panel.addToStatusArea(this.uuid, this._indicator, 0, 'left');
-                break;
-            default: // 'right'
-                Main.panel.addToStatusArea(this.uuid, this._indicator);
-                break;
+        switch (this._settings.get_string('panel-position')) {
+        case 'left':
+            Main.panel.addToStatusArea(this.uuid, this._indicator, -1, 'left');
+            break;
+        case 'left-edge':
+            Main.panel.addToStatusArea(this.uuid, this._indicator, 0, 'left');
+            break;
+        default:
+            Main.panel.addToStatusArea(this.uuid, this._indicator);
         }
     }
 

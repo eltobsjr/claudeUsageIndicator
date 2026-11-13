@@ -4,6 +4,22 @@ import Gio from 'gi://Gio';
 
 import {ExtensionPreferences, gettext as _} from 'resource:///org/gnome/Shell/Extensions/js/extensions/prefs.js';
 
+import {clampThresholds} from './logic.js';
+
+// ComboRow ligado a uma chave enum do GSettings (opções: [[nick, rótulo], ...])
+function comboRow(settings, key, title, options, subtitle = '') {
+    const row = new Adw.ComboRow({title, subtitle, model: Gtk.StringList.new(options.map(o => o[1]))});
+    row.selected = Math.max(0, options.findIndex(o => o[0] === settings.get_string(key)));
+    row.connect('notify::selected', () => settings.set_string(key, options[row.selected][0]));
+    return row;
+}
+
+function switchRow(settings, key, title, subtitle = '') {
+    const row = new Adw.SwitchRow({title, subtitle});
+    settings.bind(key, row, 'active', Gio.SettingsBindFlags.DEFAULT);
+    return row;
+}
+
 export default class ClaudeUsagePrefs extends ExtensionPreferences {
     fillPreferencesWindow(window) {
         const settings = this.getSettings();
@@ -24,6 +40,7 @@ export default class ClaudeUsagePrefs extends ExtensionPreferences {
 
         // formato do label
         const formatos = [
+            ['rings',    _('Anéis — ◔ 86% 4h38 · ◔ 60% ▲ 4d21h')],
             ['full',     _('Completo — S 62% 1h52m · W 35% 5d')],
             ['pct-only', _('Só porcentagem — S 62% · W 35%')],
             ['spark',    _('Mini barras — ▓▓▓░░ 62% · ▓▓░░░ 35%')],
@@ -39,6 +56,14 @@ export default class ClaudeUsagePrefs extends ExtensionPreferences {
             settings.set_string('label-format', formatos[formatoRow.selected][0]);
         });
         panelGroup.add(formatoRow);
+        panelGroup.add(comboRow(settings, 'value-mode', _('Mostrar valores como'),
+            [['remaining', _('Restante (padrão, como no OpenBot)')], ['used', _('Usado')]],
+            _('O anel esvazia quando mostra o restante e enche quando mostra o usado')));
+        const resetRow = switchRow(settings, 'show-reset', _('Tempo até reiniciar na barra'),
+            _('Só no formato anéis'));
+        panelGroup.add(resetRow);
+        panelGroup.add(switchRow(settings, 'show-pace', _('Aviso de ritmo (▲)'),
+            _('Quando o consumo está acima de 1,2× e a projeção acaba antes do reset')));
 
         // mostrar ícone
         const iconRow = new Adw.SwitchRow({
@@ -183,20 +208,72 @@ export default class ClaudeUsagePrefs extends ExtensionPreferences {
 
         posContainer.append(btnBox);
 
-        // =================== Página: Uso ===================
-        const limitsPage = new Adw.PreferencesPage({
-            title: _('Uso'),
-            icon_name: 'speedometer-symbolic',
+        // =================== Página: Consumo ===================
+        const consPage = new Adw.PreferencesPage({
+            title: _('Consumo'),
+            icon_name: 'utilities-system-monitor-symbolic',
         });
-        window.add(limitsPage);
+        window.add(consPage);
 
-        const infoGroup = new Adw.PreferencesGroup({
-            title: _('Dados em tempo real'),
-            description: _('Plano, % de uso e horários de reset são lidos diretamente do ' +
-                'claude.ai via credenciais OAuth armazenadas em ~/.claude/.credentials.json. ' +
-                'Não é necessário configurar nada manualmente.'),
+        const modelsGroup = new Adw.PreferencesGroup({
+            title: _('Consumo por modelo'),
+            description: _('Tokens novos por modelo, somando o Claude Code e o OpenBot. Mostra onde foi o uso, não a % exata da cota.'),
         });
-        limitsPage.add(infoGroup);
+        consPage.add(modelsGroup);
+        const mVis = switchRow(settings, 'models-visible', _('Mostrar no popup'));
+        const mMode = comboRow(settings, 'models-mode', _('Modo'),
+            [['list', _('Lista')], ['chart', _('Gráfico acumulado')]]);
+        const mWin = comboRow(settings, 'models-window', _('Janela'),
+            [['session', _('Sessão (5 h)')], ['week', _('Semana')]]);
+        for (const r of [mVis, mMode, mWin])
+            modelsGroup.add(r);
+        for (const r of [mMode, mWin])
+            settings.bind('models-visible', r, 'sensitive', Gio.SettingsBindFlags.GET);
+
+        const agentsGroup = new Adw.PreferencesGroup({
+            title: _('Agentes do OpenBot'),
+            description: _('Quais agentes mais consomem tokens novos desde o início da semana.'),
+        });
+        consPage.add(agentsGroup);
+        const aVis = switchRow(settings, 'agents-visible', _('Mostrar no popup'));
+        const aMode = comboRow(settings, 'agents-mode', _('Modo'), [['list', _('Lista')], ['donut', _('Rosca')]]);
+        agentsGroup.add(aVis);
+        agentsGroup.add(aMode);
+        settings.bind('agents-visible', aMode, 'sensitive', Gio.SettingsBindFlags.GET);
+
+        // =================== Página: Alertas ===================
+        const alertPage = new Adw.PreferencesPage({
+            title: _('Alertas'),
+            icon_name: 'dialog-warning-symbolic',
+        });
+        window.add(alertPage);
+        const alertGroup = new Adw.PreferencesGroup({
+            title: _('Quando o restante chega a'),
+            description: _('O card e o anel mudam de cor: verde, amarelo (atenção) e vermelho (crítico).'),
+        });
+        alertPage.add(alertGroup);
+        const mkSpin = (title, key) => new Adw.SpinRow({
+            title,
+            adjustment: new Gtk.Adjustment({lower: 5, upper: 95, step_increment: 5, page_increment: 10, value: settings.get_int(key)}),
+        });
+        const warnRow = mkSpin(_('Atenção (amarelo), %'), 'warn-at');
+        const critRow = mkSpin(_('Crítico (vermelho), %'), 'crit-at');
+        let busy = false;
+        const apply = () => {
+            if (busy)
+                return;
+            busy = true;
+            const t = clampThresholds(warnRow.value, critRow.value);   // o crítico nunca passa do atenção
+            settings.set_int('warn-at', t.warn);
+            settings.set_int('crit-at', t.crit);
+            warnRow.value = t.warn;
+            critRow.value = t.crit;
+            busy = false;
+        };
+        warnRow.connect('notify::value', apply);
+        critRow.connect('notify::value', apply);
+        alertGroup.add(warnRow);
+        alertGroup.add(critRow);
 
         // =================== Página: Sobre ===================
         const aboutPage = new Adw.PreferencesPage({
@@ -206,6 +283,12 @@ export default class ClaudeUsagePrefs extends ExtensionPreferences {
         window.add(aboutPage);
         const aboutGroup = new Adw.PreferencesGroup();
         aboutPage.add(aboutGroup);
+        aboutGroup.add(new Adw.ActionRow({
+            title: _('Dados em tempo real'),
+            subtitle: _('Plano, % de uso e horários de reset vêm do claude.ai via as credenciais OAuth do Claude Code ' +
+                '(~/.claude/.credentials.json). O consumo por modelo e por agente é calculado dos registros locais ' +
+                'do Claude Code e do banco do OpenBot, só para leitura.'),
+        }));
         aboutGroup.add(new Adw.ActionRow({
             title: _('Claude Usage Indicator'),
             subtitle: _('Uso do Claude Code em tempo real. Lê os percentuais direto do ' +

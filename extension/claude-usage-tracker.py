@@ -47,6 +47,10 @@ DATA_DIR = os.path.join(
 OUTPUT_FILE = os.path.join(DATA_DIR, "usage.json")
 CACHE_FILE = os.path.join(DATA_DIR, "api-cache.json")
 CREDENTIALS_FILE = os.path.join(HOME, ".claude", ".credentials.json")
+CLAUDE_PROJECTS = os.path.join(HOME, ".claude", "projects")
+OPENBOT_DB = os.path.join(
+    os.environ.get("XDG_CONFIG_HOME", os.path.join(HOME, ".config")), "OpenBot", "openbot.db")
+CONSUMPTION_CACHE = os.path.join(DATA_DIR, "consumption-cache.json")
 CLAUDE_USAGE_API = "https://api.anthropic.com/api/oauth/usage"
 
 # Intervalo mínimo entre chamadas HTTP reais à Anthropic (segundos).
@@ -217,7 +221,34 @@ def _window(api_data, key, sev_group):
     }
 
 
+def _demo_summary(path):
+    """Modo demonstração (CLAUDE_USAGE_DEMO=arquivo.json): usa dados sintéticos em vez do uso real. Serve para tirar
+    prints e desenvolver sem expor números pessoais. Os horários de reset do arquivo são relativos ao agora."""
+    with open(path, encoding="utf-8") as f:
+        demo = json.load(f)
+    now = datetime.now(timezone.utc)
+    demo["generated_at"] = now.isoformat()
+    for key in ("session", "week"):
+        w = demo.get(key) or {}
+        if "reset_in_sec" in w:
+            w["reset_at"] = datetime.fromtimestamp(now.timestamp() + w.pop("reset_in_sec"), timezone.utc).isoformat()
+    cons = demo.get("consumption") or {}
+    for key, step, n in (("session", 1800, 10), ("week", 86400, 7)):
+        win = cons.get(key) or {}
+        reset = (demo.get(key) or {}).get("reset_at")
+        if reset and win.get("slots"):
+            start = datetime.fromisoformat(reset).timestamp() - n * step
+            for i, slot in enumerate(win["slots"]):
+                slot["t"] = start + i * step
+                slot["future"] = slot["t"] > now.timestamp()
+            win["start"] = start
+    return demo
+
+
 def build_summary(force=False):
+    demo = os.environ.get("CLAUDE_USAGE_DEMO")
+    if demo and os.path.exists(demo):
+        return _demo_summary(demo)
     creds = load_credentials()
     api_data, meta = get_api_usage(creds, force=force)
     now = datetime.now(timezone.utc)
@@ -245,6 +276,16 @@ def build_summary(force=False):
             "reset_at": opus.get("resets_at"),
             "severity": _severity_for(api_data, "weekly_opus"),
         }
+
+    # Consumo por modelo e por agente (Claude Code + OpenBot). Falha só omite a seção.
+    try:
+        sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+        import consumption
+        cons = consumption.collect(summary, CLAUDE_PROJECTS, OPENBOT_DB, CONSUMPTION_CACHE)
+        if cons:
+            summary["consumption"] = cons
+    except Exception:
+        pass
 
     return summary
 

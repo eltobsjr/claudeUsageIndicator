@@ -1,31 +1,90 @@
-.cu-panel { spacing: 4px; }
+/* Claude Usage — tokens do tema (Eltob Indicator Design v1). Nada de hex aqui; o instalador gera o stylesheet.css. */
+
+/* ---- barra superior ---- */
+.cu-panel { spacing: 6px; }
 .cu-panel-label { font-feature-settings: "tnum"; font-weight: 700; font-size: 0.95em; margin-left: 2px; }
-.cu-panel-label.cu-warn { color: {{warn}}; }
-.cu-panel-label.cu-crit { color: {{crit}}; }
+.cu-panel-label.cu-warn { color: {{yellow}}; }
+.cu-panel-label.cu-crit { color: {{red}}; }
+.cu-bar-rings { spacing: 8px; }
+.cu-bar-group { spacing: 5px; }
+.cu-bar-ring { width: 18px; height: 18px; -cu-arc: {{green}}; -cu-track: rgba({{overlay1.rgb}}, 0.30); -cu-tick: {{text}}; }
+.cu-bar-ring.cu-warn { -cu-arc: {{yellow}}; }
+.cu-bar-ring.cu-crit { -cu-arc: {{red}}; }
+.cu-bar-ring.cu-off { -cu-arc: {{overlay1}}; }
+.cu-bar-val { font-weight: 800; font-feature-settings: "tnum"; }
+.cu-bar-val.cu-warn { color: {{yellow}}; }
+.cu-bar-val.cu-crit { color: {{red}}; }
+.cu-bar-tri { color: {{yellow}}; font-size: 0.8em; }
+.cu-bar-time { color: {{subtext0}}; font-size: 0.9em; font-feature-settings: "tnum"; }
+.cu-bar-sep { width: 1px; height: 14px; background-color: {{surface1}}; }
 
-.cu-head { padding: 10px 14px 4px; }
-.cu-head-title { font-weight: 800; font-size: 1.1em; }
-.cu-head-plan {
-    font-size: 0.7em; font-weight: 700; padding: 2px 9px; border-radius: {{radius.pill}}px;
-    margin-right: 8px; color: {{accent_ink}}; background-color: {{accent}};
-}
-.cu-head-time { font-size: 0.82em; color: {{subtext0}}; font-feature-settings: "tnum"; }
+/* ---- menu ---- */
+.cu-item { padding: 0 14px 12px; }
+.cu-item:hover, .cu-item:focus { background-color: transparent; }
+.cu-root { width: 340px; spacing: 0; }
 
-.cu-metric { padding: 8px 14px 6px; }
-.cu-metric-label { font-weight: 700; font-size: 0.92em; color: {{lavender}}; }
-.cu-metric-pct { font-size: 1.5em; font-weight: 800; font-feature-settings: "tnum"; }
-.cu-metric-pct.cu-warn { color: {{warn}}; }
-.cu-metric-pct.cu-crit { color: {{crit}}; }
-.cu-metric-reset { font-size: 0.78em; color: {{overlay1}}; font-feature-settings: "tnum"; margin-top: 2px; }
+/* cabeçalho */
+.cu-head { spacing: 10px; padding: 10px 0 8px; }
+.cu-avatar { width: 38px; height: 38px; border-radius: 12px; background-color: rgba({{blue.rgb}}, 0.16); color: {{blue}}; }
+.cu-avatar-icon { icon-size: 20px; }
+.cu-titles { spacing: 1px; }
+.cu-title { font-weight: 800; font-size: 1.1em; color: {{text}}; }
+.cu-sub { font-size: 0.82em; color: {{subtext0}}; font-feature-settings: "tnum"; }
+.cu-pill { font-size: 0.72em; font-weight: 800; padding: 3px 10px; border-radius: 100px; color: {{accent_ink}}; background-color: {{accent}}; }
+.cu-status { font-size: 0.88em; color: {{yellow}}; padding: 2px 0 6px; }
 
-.cu-status { padding: 2px 14px 6px; }
-.cu-status-label { font-size: 0.88em; color: {{warn}}; }
+/* anéis e cards que acompanham o estado */
+.cu-rings { spacing: 10px; margin-top: 4px; }
+.cu-card { padding: 12px 8px; border-radius: 12px; spacing: 6px; background-color: rgba({{surface0.rgb}}, 0.45); border: 1px solid transparent; }
+.cu-card-title { font-size: 0.78em; font-weight: 700; color: {{lavender}}; }
+.cu-gauge { width: 84px; height: 84px; }
+.cu-gauge-ring { -cu-arc: {{green}}; -cu-track: rgba({{overlay1.rgb}}, 0.28); -cu-tick: {{text}}; }
+.cu-gauge-val { font-weight: 800; font-size: 1.25em; font-feature-settings: "tnum"; color: {{text}}; }
+.cu-gauge-cap { font-size: 0.55em; font-weight: 700; color: {{subtext0}}; }
+.cu-card-reset { font-size: 0.8em; color: {{subtext0}}; font-feature-settings: "tnum"; }
+.cu-chip { font-size: 0.78em; font-weight: 700; padding: 2px 8px; border-radius: 100px; color: {{yellow}}; background-color: rgba({{yellow.rgb}}, 0.18); }
+.cu-card.cu-ok   { background-color: rgba({{green.rgb}}, 0.12);  border-color: rgba({{green.rgb}}, 0.42); }
+.cu-card.cu-warn { background-color: rgba({{yellow.rgb}}, 0.13); border-color: rgba({{yellow.rgb}}, 0.48); }
+.cu-card.cu-crit { background-color: rgba({{red.rgb}}, 0.14);    border-color: rgba({{red.rgb}}, 0.52); }
+.cu-card.cu-ok .cu-card-title   { color: {{green}}; }
+.cu-card.cu-warn .cu-card-title { color: {{yellow}}; }
+.cu-card.cu-crit .cu-card-title { color: {{red}}; }
+.cu-card.cu-warn .cu-gauge-ring { -cu-arc: {{yellow}}; }
+.cu-card.cu-crit .cu-gauge-ring { -cu-arc: {{red}}; }
+.cu-card.cu-off .cu-gauge-ring  { -cu-arc: {{overlay1}}; }
+.cu-hint { font-size: 0.78em; color: {{overlay1}}; margin-top: 4px; }
 
-.cu-bar-track { height: 8px; border-radius: {{radius.pill}}px; background-color: rgba({{overlay1.rgb}}, 0.22); margin: 6px 0 3px; }
-.cu-bar-fill {
-    height: 8px; border-radius: {{radius.pill}}px; background-color: {{accent}};
-    min-width: 0; transition-duration: 250ms; transition-property: width;
-}
-/* estados vêm depois: mesma especificidade, ganham pela ordem */
-.cu-bar-fill.cu-warn { background-color: {{warn}}; }
-.cu-bar-fill.cu-crit { background-color: {{crit}}; }
+/* seções */
+.cu-section { margin-top: 8px; padding: 10px 12px; border-radius: 12px; background-color: rgba({{surface0.rgb}}, 0.45); }
+.cu-section-head { spacing: 8px; margin-bottom: 4px; }
+.cu-section-title { font-size: 0.72em; font-weight: 700; letter-spacing: 1px; text-transform: uppercase; color: {{lavender}}; }
+.cu-section-note { font-size: 0.78em; color: {{subtext0}}; }
+.cu-section-body { spacing: 2px; }
+.cu-row { spacing: 8px; padding: 3px 0; }
+.cu-row-name { color: {{text}}; min-width: 76px; }
+.cu-row-val { font-size: 0.82em; color: {{subtext0}}; font-feature-settings: "tnum"; min-width: 62px; text-align: right; }
+.cu-ellipsis { max-width: 130px; }
+.cu-mbar-fixed { width: 84px; }
+.cu-row-val-wide { min-width: 92px; }
+
+/* gráficos (cores por propriedades -cu-*) */
+.cu-chart { height: 100px; -cu-s: {{lavender}}; -cu-h: {{teal}}; -cu-o: {{peach}}; -cu-t: {{text}}; -cu-grid: rgba({{overlay1.rgb}}, 0.45); -cu-label: {{subtext0}}; }
+.cu-mbar { height: 6px; min-width: 60px; -cu-track: rgba({{overlay1.rgb}}, 0.25); -cu-cc: {{lavender}}; -cu-ob: {{blue}}; }
+.cu-donut { width: 88px; height: 88px; margin-right: 10px;
+  -cu-a0: {{lavender}}; -cu-a1: {{blue}}; -cu-a2: {{teal}}; -cu-a3: {{peach}}; -cu-a4: {{mauve}}; -cu-a5: {{overlay1}};
+  -cu-hole: {{mantle}}; -cu-label-strong: {{text}}; }
+.cu-donut-row { spacing: 4px; }
+.cu-donut-legend { spacing: 2px; }
+.cu-legend { spacing: 5px; margin-top: 4px; }
+.cu-legend-text { font-size: 0.78em; color: {{subtext0}}; margin-right: 8px; }
+.cu-dot { width: 9px; height: 9px; border-radius: 3px; }
+.cu-dot-s { background-color: {{lavender}}; } .cu-dot-h { background-color: {{teal}}; } .cu-dot-o { background-color: {{peach}}; }
+.cu-dot-t { background-color: {{text}}; } .cu-dot-cc { background-color: {{lavender}}; } .cu-dot-ob { background-color: {{blue}}; }
+.cu-dot-a0 { background-color: {{lavender}}; } .cu-dot-a1 { background-color: {{blue}}; } .cu-dot-a2 { background-color: {{teal}}; }
+.cu-dot-a3 { background-color: {{peach}}; } .cu-dot-a4 { background-color: {{mauve}}; } .cu-dot-a5 { background-color: {{overlay1}}; }
+
+/* rodapé */
+.cu-foot { spacing: 6px; margin-top: 10px; }
+.cu-btn { padding: 5px 11px; border-radius: 8px; font-weight: 700; color: {{text}}; background-color: {{surface0}}; border: 2px solid transparent; text-align: center; }
+.cu-btn:hover { background-color: {{surface1}}; }
+.cu-btn:focus { border-color: {{accent}}; }

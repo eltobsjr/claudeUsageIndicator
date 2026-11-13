@@ -1,8 +1,8 @@
 {
   "uuid": "claude-usage@eltobsjr.gmail.com",
   "name": "Claude Usage Indicator",
-  "description": "Mostra o uso do Claude Code em tempo real na barra superior: % da janela de sessão de 5h e do limite semanal, com horários de reset. Lê o uso direto do claude.ai via OAuth do Claude Code — não consome tokens.",
-  "version-name": "2.1.0",
+  "description": "Mostra o uso do Claude Code na barra superior: anéis que esvaziam (restante da sessão de 5h e da semana), tempo até reiniciar, ritmo de consumo, consumo por modelo e agentes do OpenBot. Lê o uso do claude.ai via OAuth do Claude Code e não consome tokens.",
+  "version-name": "3.0.0",
   "shell-version": [
     "45",
     "46",

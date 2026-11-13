@@ -4,6 +4,27 @@
     <value nick="full"     value="0"/>
     <value nick="pct-only" value="1"/>
     <value nick="spark"    value="2"/>
+    <value nick="rings"    value="3"/>
+  </enum>
+
+  <enum id="org.gnome.shell.extensions.claude-usage.value-mode">
+    <value nick="remaining" value="0"/>
+    <value nick="used"      value="1"/>
+  </enum>
+
+  <enum id="org.gnome.shell.extensions.claude-usage.models-mode">
+    <value nick="list"  value="0"/>
+    <value nick="chart" value="1"/>
+  </enum>
+
+  <enum id="org.gnome.shell.extensions.claude-usage.models-window">
+    <value nick="session" value="0"/>
+    <value nick="week"    value="1"/>
+  </enum>
+
+  <enum id="org.gnome.shell.extensions.claude-usage.agents-mode">
+    <value nick="list"  value="0"/>
+    <value nick="donut" value="1"/>
   </enum>
 
   <enum id="org.gnome.shell.extensions.claude-usage.panel-position">
@@ -28,8 +49,60 @@
     </key>
 
     <key name="label-format" enum="org.gnome.shell.extensions.claude-usage.label-format">
-      <default>'full'</default>
+      <default>'rings'</default>
       <summary>Formato do label na barra superior</summary>
+    </key>
+
+    <key name="value-mode" enum="org.gnome.shell.extensions.claude-usage.value-mode">
+      <default>'remaining'</default>
+      <summary>Mostrar valores como restante ou usado</summary>
+    </key>
+
+    <key name="show-reset" type="b">
+      <default>true</default>
+      <summary>Mostrar o tempo até reiniciar na barra (formato anéis)</summary>
+    </key>
+
+    <key name="show-pace" type="b">
+      <default>true</default>
+      <summary>Avisar com ▲ quando o ritmo de consumo está alto</summary>
+    </key>
+
+    <key name="models-visible" type="b">
+      <default>true</default>
+      <summary>Mostrar o consumo por modelo no popup</summary>
+    </key>
+
+    <key name="models-mode" enum="org.gnome.shell.extensions.claude-usage.models-mode">
+      <default>'chart'</default>
+      <summary>Consumo por modelo: lista ou gráfico acumulado</summary>
+    </key>
+
+    <key name="models-window" enum="org.gnome.shell.extensions.claude-usage.models-window">
+      <default>'week'</default>
+      <summary>Janela do consumo por modelo</summary>
+    </key>
+
+    <key name="agents-visible" type="b">
+      <default>true</default>
+      <summary>Mostrar os agentes do OpenBot no popup</summary>
+    </key>
+
+    <key name="agents-mode" enum="org.gnome.shell.extensions.claude-usage.agents-mode">
+      <default>'list'</default>
+      <summary>Agentes do OpenBot: lista ou rosca</summary>
+    </key>
+
+    <key name="warn-at" type="i">
+      <default>30</default>
+      <range min="5" max="95"/>
+      <summary>Atenção (amarelo) quando o restante chega a este percentual</summary>
+    </key>
+
+    <key name="crit-at" type="i">
+      <default>10</default>
+      <range min="5" max="95"/>
+      <summary>Crítico (vermelho) quando o restante chega a este percentual</summary>
     </key>
 
     <key name="panel-position" enum="org.gnome.shell.extensions.claude-usage.panel-position">
