@@ -110,5 +110,35 @@
       <summary>Posição do indicador na barra superior</summary>
     </key>
 
+    <key name="ticker-enabled" type="b">
+      <default>true</default>
+      <summary>Iniciar a sessão de 5 h automaticamente (ticker)</summary>
+    </key>
+
+    <key name="ticker-time" type="s">
+      <default>'06:00'</default>
+      <summary>Horário (HH:MM) do primeiro tick do dia</summary>
+    </key>
+
+    <key name="ticker-continuous" type="b">
+      <default>true</default>
+      <summary>Abrir uma nova sessão sempre que a anterior acabar (até o horário final)</summary>
+    </key>
+
+    <key name="ticker-until" type="s">
+      <default>'23:00'</default>
+      <summary>Horário (HH:MM) em que o ticker contínuo para de abrir sessões</summary>
+    </key>
+
+    <key name="ticker-days" type="ai">
+      <default>[0, 1, 2, 3, 4, 5, 6]</default>
+      <summary>Dias da semana do ticker (0 = domingo ... 6 = sábado)</summary>
+    </key>
+
+    <key name="ticker-last-fired" type="x">
+      <default>0</default>
+      <summary>Instante (ms) do último disparo do ticker</summary>
+    </key>
+
   </schema>
 </schemalist>

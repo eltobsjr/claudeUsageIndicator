@@ -166,3 +166,81 @@ test('worstLevel e clampThresholds', () => {
     assert.deepEqual(clampThresholds(5, 5), {warn: 10, crit: 5});
     assert.deepEqual(clampThresholds(200, -4), {warn: 95, crit: 5});
 });
+
+// ---- ticker -----------------------------------------------------------------
+import {parseClock, tickerSlotMs, tickerDecision, TICKER_GRACE_SEC, TICKER_RETRY_SEC} from '../extension/logic.js';
+
+test('parseClock: aceita HH:MM e rejeita o resto', () => {
+    assert.deepEqual(parseClock('06:30'), {h: 6, m: 30});
+    assert.deepEqual(parseClock('6:05'), {h: 6, m: 5});
+    assert.equal(parseClock('24:00'), null);
+    assert.equal(parseClock('10:60'), null);
+    assert.equal(parseClock('abc'), null);
+    assert.equal(parseClock(null), null);
+});
+
+// quinta-feira, 26/11/2026, 07:00 local
+const at = (h, m = 0) => new Date(2026, 10, 26, h, m, 0, 0).getTime();
+const fresh = (over = {}) => ({has_credentials: true, token_expired: false, api_source: true, stale: false,
+    session: {pct: null, reset_at: null}, week: {pct: 30}, ...over});
+const cfg = {enabled: true, time: '06:00', days: [1, 2, 3, 4, 5]};   // 26/11/2026 é quinta (4)
+
+test('ticker: dispara depois do horário, sem sessão ativa e com dados frescos', () => {
+    assert.deepEqual(tickerDecision({nowMs: at(6, 1), cfg, data: fresh()}), {fire: true, reason: 'go'});
+    assert.equal(tickerSlotMs(at(9), {h: 6, m: 0}), at(6));
+});
+
+test('ticker: desligado, dia fora, antes e depois da tolerância', () => {
+    assert.equal(tickerDecision({nowMs: at(6, 1), cfg: {...cfg, enabled: false}, data: fresh()}).reason, 'off');
+    assert.equal(tickerDecision({nowMs: at(6, 1), cfg: {...cfg, time: 'xx'}, data: fresh()}).reason, 'off');
+    assert.equal(tickerDecision({nowMs: at(6, 1), cfg: {...cfg, days: [0, 6]}, data: fresh()}).reason, 'day');
+    assert.equal(tickerDecision({nowMs: at(5, 59), cfg, data: fresh()}).reason, 'early');
+    assert.equal(tickerDecision({nowMs: at(6) + TICKER_GRACE_SEC * 1000, cfg, data: fresh()}).fire, true);
+    assert.equal(tickerDecision({nowMs: at(6) + TICKER_GRACE_SEC * 1000 + 1, cfg, data: fresh()}).reason, 'late');
+});
+
+test('ticker: recupera depois de ligar o PC, mas só uma vez por horário', () => {
+    assert.equal(tickerDecision({nowMs: at(7, 30), cfg, data: fresh()}).fire, true);
+    assert.equal(tickerDecision({nowMs: at(7, 30), cfg, data: fresh(), lastFiredMs: at(6, 5)}).reason, 'done');
+    // disparo de ontem não conta
+    assert.equal(tickerDecision({nowMs: at(7, 30), cfg, data: fresh(), lastFiredMs: at(6) - 86400000}).fire, true);
+});
+
+test('ticker: não dispara com sessão ativa, dados velhos, sem login ou semana esgotada', () => {
+    const ativa = fresh({session: {pct: 3, reset_at: new Date(at(11)).toISOString()}});
+    assert.equal(tickerDecision({nowMs: at(7), cfg, data: ativa}).reason, 'active');
+    const velha = fresh({session: {pct: 3, reset_at: new Date(at(5)).toISOString()}});   // reset já passou
+    assert.equal(tickerDecision({nowMs: at(7), cfg, data: velha}).fire, true);
+    for (const over of [{stale: true}, {api_source: false}, {token_expired: true}, {has_credentials: false}])
+        assert.equal(tickerDecision({nowMs: at(7), cfg, data: fresh(over)}).reason, 'nodata');
+    assert.equal(tickerDecision({nowMs: at(7), cfg, data: null}).reason, 'nodata');
+    assert.equal(tickerDecision({nowMs: at(7), cfg, data: fresh({week: {pct: 100}})}).reason, 'weekfull');
+});
+
+test('ticker: espera entre tentativas que falharam', () => {
+    const base = {nowMs: at(7), cfg, data: fresh()};
+    assert.equal(tickerDecision({...base, lastAttemptMs: at(7) - 60000}).reason, 'retry');
+    assert.equal(tickerDecision({...base, lastAttemptMs: at(7) - TICKER_RETRY_SEC * 1000}).fire, true);
+});
+
+test('ticker contínuo: reabre a sessão quando acaba, dentro da janela do dia, sem laço', () => {
+    const c = {...cfg, continuous: true, until: '23:00', days: [0, 1, 2, 3, 4, 5, 6]};
+    const ativa = fresh({session: {pct: 3, reset_at: new Date(at(11)).toISOString()}});
+    assert.equal(tickerDecision({nowMs: at(10), cfg: c, data: ativa}).reason, 'active');
+    // a sessão acabou às 11h e já passou das 11h: abre outra, mesmo muito depois do horário inicial
+    assert.equal(tickerDecision({nowMs: at(11, 1), cfg: c, data: fresh(), lastFiredMs: at(6)}).fire, true);
+    assert.equal(tickerDecision({nowMs: at(22, 59), cfg: c, data: fresh(), lastFiredMs: at(18)}).fire, true);
+    assert.equal(tickerDecision({nowMs: at(23, 1), cfg: c, data: fresh(), lastFiredMs: at(18)}).reason, 'late');
+    // acabou de disparar e a API ainda não mostra sessão: espera, não repete
+    assert.equal(tickerDecision({nowMs: at(7, 10), cfg: c, data: fresh(), lastFiredMs: at(7)}).reason, 'retry');
+});
+
+test('ticker: se o disparo anterior não abriu a sessão, para de insistir', () => {
+    const c = {...cfg, continuous: true, until: '23:00'};
+    const base = {nowMs: at(9), cfg: c, data: fresh(), lastFiredMs: at(7)};
+    assert.equal(tickerDecision({...base, strikes: 1}).reason, 'broken');
+    assert.equal(tickerDecision({...base, strikes: 0}).fire, true);
+    // com sessão ativa o problema deixou de existir (quem zera o contador é a extensão)
+    const ativa = fresh({session: {pct: 3, reset_at: new Date(at(12)).toISOString()}});
+    assert.equal(tickerDecision({...base, data: ativa, strikes: 1}).reason, 'active');
+});

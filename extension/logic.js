@@ -237,3 +237,61 @@ export function clampThresholds(warn, crit) {
         w = c + 5;
     return {warn: w, crit: c};
 }
+
+// ---------------------------------------------------------------------------
+// Ticker: manda uma mensagem mínima no horário combinado para iniciar a sessão de 5 h.
+// ---------------------------------------------------------------------------
+export const TICKER_GRACE_SEC = 2 * 3600;   // modo "uma vez por dia": ainda recupera depois do horário (PC desligado)
+export const TICKER_RETRY_SEC = 30 * 60;    // espera entre tentativas que falharam
+export const TICKER_REFIRE_SEC = 60 * 60;   // depois de um disparo, não repete antes disto (evita laço se a janela não abrir)
+
+/** "06:30" -> {h: 6, m: 30}; inválido -> null. */
+export function parseClock(text) {
+    const mt = /^(\d{1,2}):(\d{2})$/.exec(String(text ?? '').trim());
+    if (!mt)
+        return null;
+    const h = Number(mt[1]), m = Number(mt[2]);
+    return h <= 23 && m <= 59 ? {h, m} : null;
+}
+
+/** Instante (ms) de um horário no dia local de `nowMs`. */
+export function tickerSlotMs(nowMs, clock) {
+    const d = new Date(nowMs);
+    d.setHours(clock.h, clock.m, 0, 0);
+    return d.getTime();
+}
+
+/**
+ * Decide se é hora de iniciar a sessão. Só dispara com dados frescos e sem sessão ativa, para nunca gastar cota
+ * à toa. Devolve {fire, reason}; reason: off | day | early | late | done | nodata | active | weekfull | broken | retry | go.
+ * Contínuo: do horário inicial até o final, sempre que a sessão acaba, abre outra. Senão, uma vez por dia.
+ */
+export function tickerDecision({nowMs, cfg, data, lastFiredMs = 0, lastAttemptMs = 0, strikes = 0}) {
+    const no = reason => ({fire: false, reason});
+    const clock = parseClock(cfg?.time);
+    if (!cfg?.enabled || !clock)
+        return no('off');
+    if (!(cfg.days ?? []).includes(new Date(nowMs).getDay()))
+        return no('day');
+    const slot = tickerSlotMs(nowMs, clock);
+    if (nowMs < slot)
+        return no('early');
+    const until = cfg.continuous ? parseClock(cfg.until) : null;
+    const end = until ? tickerSlotMs(nowMs, until) : slot + TICKER_GRACE_SEC * 1000;
+    if (nowMs > end)
+        return no('late');
+    if (!cfg.continuous && lastFiredMs >= slot)
+        return no('done');
+    if (!data?.has_credentials || data.token_expired || !data.api_source || data.stale)
+        return no('nodata');
+    const resetMs = data.session?.reset_at ? new Date(data.session.reset_at).getTime() : 0;
+    if (resetMs > nowMs)
+        return no('active');
+    if ((data.week?.pct ?? 0) >= 100)
+        return no('weekfull');
+    if (strikes >= 1)   // o disparo anterior não abriu a janela: não insiste (só volta depois que houver sessão ativa)
+        return no('broken');
+    if (nowMs - lastAttemptMs < TICKER_RETRY_SEC * 1000 || nowMs - lastFiredMs < TICKER_REFIRE_SEC * 1000)
+        return no('retry');
+    return {fire: true, reason: 'go'};
+}

@@ -393,12 +393,90 @@ class ClaudeIndicator extends PanelMenu.Button {
                 if (ok) {
                     this._data = JSON.parse(new TextDecoder().decode(raw));
                     this._render();
+                    this._tickerCheck();
                 }
             } catch (_e) {
                 if (!this._destroyed)
                     this._panelLabel.text = '—';
             }
         });
+    }
+
+    // ------------------------------------------------------------------ ticker
+    /** Acha o executável do Claude Code (o PATH do GNOME Shell costuma não ter ~/.local/bin). */
+    _findClaude() {
+        const home = GLib.get_home_dir();
+        const cands = [GLib.build_filenamev([home, '.local', 'bin', 'claude']),
+            GLib.build_filenamev([home, '.claude', 'local', 'claude']), '/usr/local/bin/claude', '/usr/bin/claude'];
+        return cands.find(c => GLib.file_test(c, GLib.FileTest.IS_EXECUTABLE)) ?? GLib.find_program_in_path('claude');
+    }
+
+    /** Se for a hora e não houver sessão ativa, manda uma mensagem mínima (Haiku, ~600 tokens) para iniciá-la. */
+    _tickerCheck() {
+        if (this._destroyed || this._tickerBusy)
+            return;
+        const s = this._settings;
+        const nowMs = Date.now();
+        const dec = L.tickerDecision({
+            nowMs,
+            cfg: {enabled: s.get_boolean('ticker-enabled'), time: s.get_string('ticker-time'), continuous: s.get_boolean('ticker-continuous'),
+                until: s.get_string('ticker-until'), days: Array.from(s.get_value('ticker-days').deepUnpack())},
+            data: this._data,
+            lastFiredMs: Number(s.get_int64('ticker-last-fired')),
+            lastAttemptMs: this._tickerAttempt ?? 0,
+            strikes: this._tickerStrikes ?? 0,
+        });
+        if (dec.reason === 'active') {
+            this._tickerStrikes = 0;
+            this._tickerWarned = false;
+        }
+        if (dec.reason === 'broken' && !this._tickerWarned) {
+            this._tickerWarned = true;
+            Main.notify(_('Claude Usage'), _('O ticker mandou a mensagem, mas a sessão de 5 h não abriu. Parei de insistir.'));
+        }
+        if (!dec.fire)
+            return;
+        const lastFired = Number(s.get_int64('ticker-last-fired'));
+        if (lastFired && nowMs - lastFired < 2 * 3600 * 1000)   // disparou há pouco e continua sem sessão
+            this._tickerStrikes = (this._tickerStrikes ?? 0) + 1;
+        const claude = this._findClaude();
+        if (!claude)
+            return;
+        this._tickerBusy = true;
+        this._tickerAttempt = nowMs;
+        const cwd = GLib.build_filenamev([GLib.get_user_cache_dir(), 'claude-usage', 'ticker']);
+        GLib.mkdir_with_parents(cwd, 0o700);
+        const done = ok => {
+            this._tickerBusy = false;
+            if (this._destroyed)
+                return;
+            if (ok) {
+                s.set_int64('ticker-last-fired', Date.now());
+                Main.notify(_('Claude Usage'), _('Sessão de 5 h iniciada pelo ticker.'));
+                this._tick(true);
+            }
+        };
+        try {
+            const launcher = new Gio.SubprocessLauncher({flags: Gio.SubprocessFlags.STDOUT_SILENCE | Gio.SubprocessFlags.STDERR_SILENCE});
+            launcher.set_cwd(cwd);
+            // sem ferramentas, sem plugins/hooks/MCP e sem gravar a conversa: só uma mensagem curta
+            const proc = launcher.spawnv([claude, '-p', 'ok', '--model', 'haiku', '--tools', '', '--no-session-persistence',
+                '--disable-slash-commands', '--setting-sources', '', '--strict-mcp-config', '--system-prompt', 'Responda apenas: ok']);
+            const kill = GLib.timeout_add_seconds(GLib.PRIORITY_DEFAULT, 90, () => {
+                proc.force_exit();
+                return GLib.SOURCE_REMOVE;
+            });
+            proc.wait_check_async(null, (p, res) => {
+                GLib.source_remove(kill);
+                let ok = false;
+                try {
+                    ok = p.wait_check_finish(res);
+                } catch (_e) { /* falhou: tenta de novo depois do intervalo */ }
+                done(ok);
+            });
+        } catch (_e) {
+            this._tickerBusy = false;
+        }
     }
 
     _cfg() {

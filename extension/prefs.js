@@ -1,10 +1,11 @@
 import Adw from 'gi://Adw';
 import Gtk from 'gi://Gtk';
 import Gio from 'gi://Gio';
+import GLib from 'gi://GLib';
 
 import {ExtensionPreferences, gettext as _} from 'resource:///org/gnome/Shell/Extensions/js/extensions/prefs.js';
 
-import {clampThresholds} from './logic.js';
+import {clampThresholds, parseClock} from './logic.js';
 
 // ComboRow ligado a uma chave enum do GSettings (opções: [[nick, rótulo], ...])
 function comboRow(settings, key, title, options, subtitle = '') {
@@ -274,6 +275,72 @@ export default class ClaudeUsagePrefs extends ExtensionPreferences {
         critRow.connect('notify::value', apply);
         alertGroup.add(warnRow);
         alertGroup.add(critRow);
+
+        // =================== Página: Ticker ===================
+        const tickPage = new Adw.PreferencesPage({
+            title: _('Ticker'),
+            icon_name: 'alarm-symbolic',
+        });
+        window.add(tickPage);
+        const tickGroup = new Adw.PreferencesGroup({
+            title: _('Iniciar a sessão de 5 h sozinho'),
+            description: _('A sessão de 5 h só começa quando você manda a primeira mensagem. No horário combinado, e só se ' +
+                'não houver sessão ativa, o ticker manda um "ok" ao Claude Haiku (cerca de 600 tokens), para a janela ' +
+                'começar — e reiniciar — mais cedo. Se o computador estiver desligado, ele recupera em até 2 h depois.'),
+        });
+        tickPage.add(tickGroup);
+        const tickOn = switchRow(settings, 'ticker-enabled', _('Ativar o ticker'),
+            _('Gasta uma fração mínima da cota por disparo. Precisa do comando "claude" instalado e com login.'));
+        tickGroup.add(tickOn);
+
+        const clock = parseClock(settings.get_string('ticker-time')) ?? {h: 6, m: 0};
+        const mkClock = (title, lower, upper, value) => new Adw.SpinRow({
+            title,
+            adjustment: new Gtk.Adjustment({lower, upper, step_increment: 1, page_increment: 5, value}),
+        });
+        const hourRow = mkClock(_('Primeiro tick — hora'), 0, 23, clock.h);
+        const minRow = mkClock(_('Primeiro tick — minuto'), 0, 59, clock.m);
+        const saveClock = () => settings.set_string('ticker-time',
+            `${String(hourRow.value).padStart(2, '0')}:${String(minRow.value).padStart(2, '0')}`);
+        hourRow.connect('notify::value', saveClock);
+        minRow.connect('notify::value', saveClock);
+        tickGroup.add(hourRow);
+        tickGroup.add(minRow);
+
+        const contRow = switchRow(settings, 'ticker-continuous', _('Reiniciar direto'),
+            _('Sempre que a sessão de 5 h acabar, abre outra na hora, até o horário final. Desligado: só uma vez por dia.'));
+        tickGroup.add(contRow);
+        const until = parseClock(settings.get_string('ticker-until')) ?? {h: 23, m: 0};
+        const untilHour = mkClock(_('Parar de reiniciar — hora'), 0, 23, until.h);
+        const untilMin = mkClock(_('Parar de reiniciar — minuto'), 0, 59, until.m);
+        const saveUntil = () => settings.set_string('ticker-until',
+            `${String(untilHour.value).padStart(2, '0')}:${String(untilMin.value).padStart(2, '0')}`);
+        untilHour.connect('notify::value', saveUntil);
+        untilMin.connect('notify::value', saveUntil);
+        tickGroup.add(untilHour);
+        tickGroup.add(untilMin);
+        settings.bind('ticker-continuous', untilHour, 'sensitive', Gio.SettingsBindFlags.GET);
+        settings.bind('ticker-continuous', untilMin, 'sensitive', Gio.SettingsBindFlags.GET);
+
+        const daysRow = new Adw.ActionRow({title: _('Dias'), subtitle: _('Só dispara nos dias marcados')});
+        const daysBox = new Gtk.Box({spacing: 4, valign: Gtk.Align.CENTER});
+        const dayNames = [_('Dom'), _('Seg'), _('Ter'), _('Qua'), _('Qui'), _('Sex'), _('Sáb')];
+        const selected = new Set(settings.get_value('ticker-days').deepUnpack());
+        dayNames.forEach((name, i) => {
+            const b = new Gtk.ToggleButton({label: name, active: selected.has(i)});
+            b.connect('toggled', () => {
+                if (b.active)
+                    selected.add(i);
+                else
+                    selected.delete(i);
+                settings.set_value('ticker-days', new GLib.Variant('ai', [...selected].sort()));
+            });
+            daysBox.append(b);
+        });
+        daysRow.add_suffix(daysBox);
+        tickGroup.add(daysRow);
+        for (const r of [hourRow, minRow, contRow, daysRow])
+            settings.bind('ticker-enabled', r, 'sensitive', Gio.SettingsBindFlags.GET);
 
         // =================== Página: Sobre ===================
         const aboutPage = new Adw.PreferencesPage({

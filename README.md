@@ -58,9 +58,24 @@ Os dois anéis seguem a cor do pior estado.
 - **Exibição** — formato da barra, posição (seletor visual), ícone, intervalo de atualização, mostrar restante/usado, mostrar reset e ritmo.
 - **Consumo** — mostrar modelos e agentes, modo (gráfico/lista, lista/rosca) e janela (sessão/semana).
 - **Alertas** — limites de atenção e crítico (restante %), sempre com crítico < atenção.
+- **Ticker** — inicia a sessão de 5 h sozinho (veja abaixo).
 - **Sobre**.
 
-Chaves GSettings: `refresh-interval`, `show-icon`, `label-format`, `value-mode`, `show-reset`, `show-pace`, `models-visible`, `models-mode`, `models-window`, `agents-visible`, `agents-mode`, `warn-at`, `crit-at`, `panel-position`.
+Chaves GSettings: `refresh-interval`, `show-icon`, `label-format`, `value-mode`, `show-reset`, `show-pace`, `models-visible`, `models-mode`, `models-window`, `agents-visible`, `agents-mode`, `warn-at`, `crit-at`, `panel-position`, `ticker-enabled`, `ticker-time`, `ticker-days`, `ticker-continuous`, `ticker-until`, `ticker-last-fired`.
+
+## Ticker (iniciar a sessão de 5 h sozinho)
+
+A janela de 5 h só começa quando você manda a primeira mensagem. Com o ticker ligado (é o padrão; dá para desligar em Preferências → Ticker), no horário escolhido a extensão roda `claude -p ok --model haiku` (sem ferramentas, hooks, plugins nem histórico: cerca de 600 tokens) para a sessão começar — e reiniciar — mais cedo.
+
+Por padrão vale **todos os dias** e fica em modo **contínuo**: a partir do primeiro tick do dia, sempre que a sessão acaba ele abre outra na hora, até o horário final (padrão 23:00). Desligando o contínuo, é uma vez por dia (recupera em até 2 h se o PC estava desligado).
+
+Só dispara se: o dia está marcado, o horário já passou, os dados de uso estão frescos, **não há sessão ativa** e a semana não está esgotada. Nunca repete em menos de 1 h e, se a mensagem não abrir a janela, tenta só mais uma vez e avisa (não vira laço); se falhar, tenta de novo após 30 min. Precisa do `claude` instalado e logado. Só roda enquanto a sessão do GNOME está aberta.
+
+### Com o PC desligado (rotina na nuvem)
+
+A extensão só age com a sessão do GNOME aberta. Para cobrir o PC desligado, crie uma rotina agendada do Claude Code (`/schedule`, ou https://claude.ai/code/routines): cron `0 9,15,21 * * *` (06h, 12h e 18h em UTC-3), modelo Haiku, sem repositório nem conectores, prompt `Responda apenas: ok. Não use ferramentas, não leia nem edite arquivos.`
+
+Os dois se completam, não se repetem: a extensão é exata (reage ao fim real da sessão), mas depende do PC ligado; a nuvem é cega (horário fixo, mínimo de 1 h entre execuções), mas roda sempre. Se a nuvem dispara com a sessão já ativa, só manda um "ok" a mais dentro dela. O espaço é de 6 h, e não de 5 h, de propósito: o disparo tem alguns minutos de atraso e, caindo antes da sessão acabar, não abriria a seguinte.
 
 ## Posição na barra
 
